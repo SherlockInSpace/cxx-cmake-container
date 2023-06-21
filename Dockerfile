@@ -5,12 +5,12 @@ ENV TZ=America/Los_Angeles
 
 # Enable add-apt-repository for below
 RUN set -ex; \
-    apt update; \
-    apt install -y software-properties-common;
+    apt update;
+#    apt install -y software-properties-common;
 
 # Get the latest toolchain for the Ubuntu distribution
-RUN set -ex; \
-    add-apt-repository -y "ppa:ubuntu-toolchain-r/test";
+#RUN set -ex; \
+#    add-apt-repository -y "ppa:ubuntu-toolchain-r/test";
 
 # Install a bunch of devtools
 RUN set -ex; \
@@ -21,8 +21,8 @@ RUN set -ex; \
         doxygen \
         gcovr \
         git \
-        gcc-13 \
-        g++-13 \
+        gcc-11 \
+        g++-11 \
         graphviz \
         lcov \
         libgtest-dev \
@@ -35,11 +35,11 @@ RUN set -ex; \
         zsh \
     ;
 
-# Ensure the default is gcc-13
+# Ensure the default is gcc-11
 RUN set -ex; \
-    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-13 13; \
-    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-13 13; \
-    update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-13 13;
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 11; \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-11 11; \
+    update-alternatives --install /usr/bin/gcov gcov /usr/bin/gcov-11 11;
 
 # Add our dev user
 RUN set -ex; \
