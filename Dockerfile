@@ -5,9 +5,9 @@
 #          and quality tools, apt fixed at an Ubuntu snapshot. GitHub Actions
 #          job containers run this one, so it has no user account, no sudo
 #          and no interactive comforts.
-#   dev  — (later) builds on ci with a UID-mapped user and editor tooling.
+#   dev  — ci plus a dev user, sudo and zsh; the stage people run.
 #
-# Build:   docker build --target ci -t cxx-cmake-container:ci-local .
+# Build:   docker build --target dev -t cxx-cmake-container:dev-local .
 # Pin:     docker build --build-arg UBUNTU_SNAPSHOT=<ID> ...   (CI always pins)
 # Live:    docker build --build-arg UBUNTU_SNAPSHOT= ...       (fallback only)
 
@@ -304,3 +304,43 @@ mkdir -p /etc/cxx-cmake-container
     dpkg-query -W -f '${binary:Package}=${Version}\n' | sort
 } > /etc/cxx-cmake-container/versions.txt
 EOF
+
+# dev: ci plus a user account, sudo and zsh. ci stays root because GitHub
+# Actions job containers need it; dev is the only stage a person runs. UID
+# and GID are the build-time ids. docker/entrypoint.sh moves dev to
+# HOST_UID/HOST_GID at start when they are set, so the published image fits
+# any host without a rebuild.
+FROM ci AS dev
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG UID=1000
+ARG GID=1000
+
+# ubuntu.sources came from ci, so this resolves against the same snapshot.
+RUN <<'EOF'
+set -eu
+apt-get update
+apt-get install -y --no-install-recommends \
+    sudo \
+    zsh
+rm -rf /var/lib/apt/lists/*
+EOF
+
+# ci removed the stock ubuntu account, so 1000 is free. The entrypoint runs
+# as dev and needs the sudo rule to remap its own account.
+RUN <<'EOF'
+set -eu
+groupadd --gid "${GID}" dev
+useradd --uid "${UID}" --gid dev --create-home --shell /usr/bin/zsh dev
+echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev
+chmod 0440 /etc/sudoers.d/dev
+install -d -o dev -g dev /work
+EOF
+
+COPY --chown=dev:dev docker/zshrc /home/dev/.zshrc
+COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
+
+USER dev
+WORKDIR /work
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["zsh"]

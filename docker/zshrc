@@ -1,0 +1,10 @@
+# dev's shell in the dev image. No plugin manager, nothing that needs the
+# network.
+autoload -Uz compinit && compinit
+bindkey -e
+PROMPT='%F{green}%n@%m%f:%F{blue}%~%f %# '
+HISTFILE=~/.zsh_history
+HISTSIZE=10000
+SAVEHIST=10000
+setopt HIST_IGNORE_DUPS SHARE_HISTORY
+export PATH="$HOME/.local/bin:$PATH"
