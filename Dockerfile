@@ -1,68 +1,34 @@
-# cxx-cmake-container — versioned build environments for the cxx-cmake family.
+# Build environments for the cxx-cmake family. ci has the toolchain and runs
+# as root for GitHub Actions job containers. dev adds a dev user, sudo and
+# zsh and is the stage people run. apt uses an Ubuntu snapshot
+# (UBUNTU_SNAPSHOT); set it empty to use the live archive.
 #
-# Multi-stage layout (stages land one issue at a time):
-#   ci   — root, GCC 15 + Clang 22, CMake 4.3.1, the baseline dependencies
-#          and quality tools, apt fixed at an Ubuntu snapshot. GitHub Actions
-#          job containers run this one, so it has no user account, no sudo
-#          and no interactive comforts.
-#   dev  — ci plus a dev user, sudo and zsh; the stage people run.
-#
-# Build:   docker build --target dev -t cxx-cmake-container:dev-local .
-# Pin:     docker build --build-arg UBUNTU_SNAPSHOT=<ID> ...   (CI always pins)
-# Live:    docker build --build-arg UBUNTU_SNAPSHOT= ...       (fallback only)
+# Build: docker build --target dev -t cxx-cmake-container:dev-local .
 
-# ---------------------------------------------------------------------------
-# Base image: ubuntu:26.04 (resolute), pinned by the multi-arch *index* digest
-# so amd64 and arm64 builds resolve to the same published manifest list.
-# Digest = resolute-20260811.1, taken from
-# `docker buildx imagetools inspect ubuntu:26.04` on 2026-09-03; the index lists
-# linux/amd64 and linux/arm64/v8. Bump the tag and digest together.
-#
-# The digest lives in one global ARG so the FROM line and the versions.txt
-# manifest can never disagree; it is re-declared inside the stage below
-# because global ARGs are not visible to RUN steps.
-# ---------------------------------------------------------------------------
+# ubuntu:26.04 (resolute) by its multi-arch index digest (linux/amd64 and
+# linux/arm64/v8), so both arches get the same manifest list. The digest is
+# resolute-20260811.1 from `docker buildx imagetools inspect ubuntu:26.04` on
+# 2026-09-03. Bump the tag and the digest together.
 ARG UBUNTU_DIGEST=sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
 FROM ubuntu:26.04@${UBUNTU_DIGEST} AS ci
 
-# Re-declared (no default) to pull the global value into this stage for
-# versions.txt.
+# One ARG for the FROM line and versions.txt. Global ARGs are not visible to
+# RUN, so the stage declares it again.
 ARG UBUNTU_DIGEST
 
-# Apt snapshot ID (https://snapshot.ubuntu.com). Pinning package resolution
-# to a fixed point in the archive's history makes rebuilds reproducible: the
-# same Dockerfile and the same ID yield the same package set, months later.
-# An empty value disables pinning and uses the live archive — a documented
-# fallback for when the snapshot service is unavailable, never for CI.
+# Apt snapshot (https://snapshot.ubuntu.com). The same ID gives the same
+# package set months later. Empty uses the live archive: a fallback for when
+# the snapshot service is down, never for CI.
 ARG UBUNTU_SNAPSHOT=20260901T000000Z
 
-# Populated by BuildKit (amd64 / arm64); recorded in versions.txt.
+# Set by BuildKit (amd64 / arm64); recorded in versions.txt.
 ARG TARGETARCH
 
-# ARG rather than ENV: silence debconf during the build without leaking the
-# setting into the runtime environment of the published image.
+# ARG, not ENV, so the setting stays out of the published image.
 ARG DEBIAN_FRONTEND=noninteractive
 
-# ---------------------------------------------------------------------------
-# Step 1: trust store, then point apt at the snapshot.
-#
-# apt reaches snapshot.ubuntu.com over HTTPS, and the base image ships no CA
-# bundle, so ca-certificates has to come from the live archive first.
-#
-# The stock ubuntu.sources differs per architecture: amd64 uses
-# archive.ubuntu.com, arm64 uses ports.ubuntu.com/ubuntu-ports. The snapshot
-# service does not serve the ports tree, and on 26.04 arm64 is a first-class
-# archive architecture, so both arches are rewritten to archive.ubuntu.com.
-# Both stanzas (release/-updates/-backports and -security) get the same
-# `Snapshot:` field; the layout mirrors the stock file to keep it recognisable.
-#
-# What `Snapshot:` pins (apt 3.2): the package cache, `apt-cache policy` and
-# every .deb download come from https://snapshot.ubuntu.com/ubuntu/<ID>/.
-# `apt-get update` still fetches index metadata from the live URIs: as well,
-# so the live archive must be reachable at update time. Pointing URIs: at the
-# snapshot directly would remove that dependency, at the cost of the
-# one-line `--build-arg UBUNTU_SNAPSHOT=` fallback to the live archive.
-# ---------------------------------------------------------------------------
+# The snapshot is HTTPS and the base image has no CA bundle, so ca-certificates
+# comes from the live archive first. Then point apt at the snapshot.
 RUN <<'EOF'
 set -eu
 apt-get update
@@ -73,10 +39,14 @@ if [ -n "${UBUNTU_SNAPSHOT}" ]; then
     snapshot_field="Snapshot: ${UBUNTU_SNAPSHOT}"
 fi
 
+# The stock file differs per arch: amd64 archive.ubuntu.com, arm64
+# ports.ubuntu.com/ubuntu-ports. The snapshot service has no ports tree and on
+# 26.04 arm64 is a first-class archive arch, so both use archive.ubuntu.com.
+# Same layout as stock; both stanzas get the same Snapshot: field.
 cat > /etc/apt/sources.list.d/ubuntu.sources <<SOURCES
 # Managed by the cxx-cmake-container Dockerfile.
 # archive.ubuntu.com on every architecture. When Snapshot: is present, package
-# resolution and .deb downloads are pinned to snapshot.ubuntu.com/ubuntu/<ID>;
+# resolution and .deb downloads come from snapshot.ubuntu.com/ubuntu/<ID>;
 # apt-get update still fetches index metadata from the live URIs: as well.
 
 Types: deb
@@ -94,22 +64,21 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 ${snapshot_field}
 SOURCES
 
-# Drop the live-archive lists fetched for ca-certificates; everything from
-# here on is re-resolved against the snapshot.
+# Snapshot: (apt 3.2) sends the package cache, apt-cache policy and every .deb
+# download to https://snapshot.ubuntu.com/ubuntu/<ID>/. apt-get update still
+# fetches the index from the live URIs:, so the live archive has to be
+# reachable then. Putting the snapshot in URIs: would remove that, and with
+# it the one-line --build-arg UBUNTU_SNAPSHOT= fallback.
+#
+# Drop the live lists fetched for ca-certificates; from here on everything
+# resolves against the snapshot.
 rm -rf /var/lib/apt/lists/*
 EOF
 
-# ---------------------------------------------------------------------------
-# Step 2: the toolchain and baseline tools.
-#
-# `gcc` and `g++` are the release metapackages: on resolute they resolve to
-# gcc-15 (15.2.x) and already provide the unversioned gcc/g++/cc/c++/gcov
-# links, so there is no update-alternatives dance to keep in sync.
-# The rest is the minimum a CMake/CPM build and its CI steps need:
-# binutils/make (build), git/curl (CPM fetch, checkout), pkg-config
-# (find_package fallbacks), ccache (CI cache), python3 (helper scripts),
-# xz-utils/file (tarballs, artefact inspection).
-# ---------------------------------------------------------------------------
+# The toolchain and what a CMake/CPM build and its CI steps need (git/curl
+# for CPM, ccache for the CI cache, python3 for helper scripts). gcc/g++ are
+# the release metapackages, gcc-15 (15.2.x) on resolute, and already ship the
+# unversioned gcc/g++/cc/c++/gcov links, so no update-alternatives.
 RUN <<'EOF'
 set -eu
 apt-get update
@@ -129,13 +98,10 @@ apt-get install -y --no-install-recommends \
 rm -rf /var/lib/apt/lists/*
 EOF
 
-# ---------------------------------------------------------------------------
-# Step 3: CMake 4.3.1 from Kitware's release tarball.
-#
-# No Ubuntu archive ships CMake >= 4.3 (resolute has 4.2.3); Wrynose 6.0.2
-# uses 4.3.1. Hashes are from cmake-4.3.1-SHA-256.txt on the release page;
-# bump CMAKE_VERSION and both together. doc/ and man/ are skipped (~60 MB).
-# ---------------------------------------------------------------------------
+# CMake 4.3.1 from Kitware's tarball: no Ubuntu archive has CMake >= 4.3
+# (resolute has 4.2.3) and Wrynose 6.0.2 uses 4.3.1. Hashes are from
+# cmake-4.3.1-SHA-256.txt on the release page; bump CMAKE_VERSION and both
+# together. doc/ and man/ are skipped (~60 MB).
 ARG CMAKE_VERSION=4.3.1
 
 RUN <<'EOF'
@@ -168,15 +134,10 @@ rm -f "/tmp/${tarball}"
 test "$(cmake --version | head -n1)" = "cmake version ${CMAKE_VERSION}"
 EOF
 
-# ---------------------------------------------------------------------------
-# Step 4: baseline dependencies and quality tooling.
-#
-# Versioned LLVM packages only: unversioned clang/clang-tidy/clang-format on
-# resolute still resolve to LLVM 21. The check below allows the three LLVM 21
-# libraries doxygen depends on and fails on anything else built from
-# llvm-toolchain-21. The clang symlinks go in /usr/local/bin: one LLVM is
-# installed, so there is nothing for update-alternatives to choose between.
-# ---------------------------------------------------------------------------
+# Baseline dependencies and quality tools. Versioned LLVM packages only:
+# unversioned clang/clang-tidy/clang-format on resolute are still LLVM 21.
+# The clang symlinks go in /usr/local/bin; with one LLVM installed there is
+# nothing for update-alternatives to choose between.
 RUN <<'EOF'
 set -eu
 apt-get update
@@ -230,13 +191,9 @@ for tool in clang clang++ clang-tidy clang-format; do
 done
 EOF
 
-# ---------------------------------------------------------------------------
-# Step 5: doxygen-awesome-css v2.4.2.
-#
-# The library's docs build takes the Doxygen theme from the image. We fetch
-# by commit (a tag can move) and check each file's SHA256; bumping the tag
-# means recomputing every hash below.
-# ---------------------------------------------------------------------------
+# doxygen-awesome-css v2.4.2, the Doxygen theme the library's docs build
+# takes from the image. Fetched by commit (a tag can move) and each file is
+# checked by SHA256; bumping the tag means recomputing every hash below.
 ARG DOXYGEN_AWESOME_CSS_TAG=v2.4.2
 ARG DOXYGEN_AWESOME_CSS_COMMIT=d52eafe3e9303399fda15661f3d7bb8fe3d7eabc
 
@@ -264,14 +221,9 @@ FILES
 chmod 0644 "${dest}"/*
 EOF
 
-# ---------------------------------------------------------------------------
-# Step 6: no stock user.
-#
-# The base image ships an `ubuntu` user and group at UID/GID 1000. The ci
-# stage runs as root (GitHub Actions job containers expect that), and the
-# later dev stage maps the host user onto UID 1000 — a leftover account there
-# would collide. Remove it so no UID >= 1000 exists in ci.
-# ---------------------------------------------------------------------------
+# The base image ships an `ubuntu` user and group at UID/GID 1000. dev puts
+# the host user on 1000, where a leftover account would collide. Remove it so
+# no UID >= 1000 exists in ci.
 RUN <<'EOF'
 set -eu
 userdel -r ubuntu
@@ -280,12 +232,8 @@ if getent group ubuntu >/dev/null; then
 fi
 EOF
 
-# ---------------------------------------------------------------------------
-# Step 7: build manifest.
-#
-# /etc/cxx-cmake-container/versions.txt: the image's inputs plus the
-# installed-package list, so a published image can be traced back.
-# ---------------------------------------------------------------------------
+# /etc/cxx-cmake-container/versions.txt: the image's inputs and the installed
+# packages, so a published image can be traced back.
 RUN <<'EOF'
 set -eu
 mkdir -p /etc/cxx-cmake-container
