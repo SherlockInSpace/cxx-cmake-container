@@ -35,6 +35,13 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Dependabot bumps the digest in the FROM line only. UBUNTU_DIGEST and
+      # test/expected-versions.env follow by hand, so fail until they do.
+      - name: Check the base digest
+        run: >
+          grep -q "^FROM ubuntu:26.04@$(sed -n 's/^UBUNTU_DIGEST=//p' test/expected-versions.env) "
+          Dockerfile
+
       - uses: docker/setup-buildx-action@v4
 
       # One GHA cache per arch. mode=min exports only the final image's layers,
