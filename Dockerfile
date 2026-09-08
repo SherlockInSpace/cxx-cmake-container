@@ -29,10 +29,35 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 # The snapshot is HTTPS and the base image has no CA bundle, so ca-certificates
 # comes from the live archive first. Then point apt at the snapshot.
+# snapshot.ubuntu.com drops out for minutes at a time (503s, once a 404), and a
+# cold build spends about 25 minutes downloading from it, so one hiccup used to
+# fail the whole image. apt retries each file with backoff, and apt-retry
+# repeats a failed update or install a few times before giving up.
 RUN <<'EOF'
 set -eu
-apt-get update
-apt-get install -y --no-install-recommends ca-certificates
+cat > /etc/apt/apt.conf.d/80-retries <<'CONF'
+Acquire::Retries "10";
+Acquire::http::Timeout "60";
+CONF
+cat > /usr/local/sbin/apt-retry <<'SH'
+#!/bin/sh
+# apt-retry update | apt-retry install <packages...>
+# Runs apt-get up to 6 times, waiting 30, 60, 90... seconds between tries.
+set -u
+: "${1:?usage: apt-retry update | apt-retry install <packages...>}"
+n=1
+while :; do
+    if apt-get "$@"; then exit 0; fi
+    if [ "$n" -ge 6 ]; then
+        echo "apt-get $1 failed 6 times; if the errors above are download failures, snapshot.ubuntu.com is down (see README)" >&2
+        exit 1
+    fi
+    sleep $((n * 30)); n=$((n + 1))
+done
+SH
+chmod 0755 /usr/local/sbin/apt-retry
+apt-retry update
+apt-retry install -y --no-install-recommends ca-certificates
 
 snapshot_field=""
 if [ -n "${UBUNTU_SNAPSHOT}" ]; then
@@ -81,8 +106,8 @@ EOF
 # unversioned gcc/g++/cc/c++/gcov links, so no update-alternatives.
 RUN <<'EOF'
 set -eu
-apt-get update
-apt-get install -y --no-install-recommends \
+apt-retry update
+apt-retry install -y --no-install-recommends \
     gcc \
     g++ \
     binutils \
@@ -140,8 +165,8 @@ EOF
 # nothing for update-alternatives to choose between.
 RUN <<'EOF'
 set -eu
-apt-get update
-apt-get install -y --no-install-recommends \
+apt-retry update
+apt-retry install -y --no-install-recommends \
     ninja-build \
     libssl-dev \
     libgtest-dev \
@@ -267,8 +292,8 @@ ARG GID=1000
 # ubuntu.sources came from ci, so this resolves against the same snapshot.
 RUN <<'EOF'
 set -eu
-apt-get update
-apt-get install -y --no-install-recommends \
+apt-retry update
+apt-retry install -y --no-install-recommends \
     sudo \
     zsh
 rm -rf /var/lib/apt/lists/*
