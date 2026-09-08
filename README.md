@@ -12,6 +12,16 @@ Sibling repos:
 - [cxx-cmake-app](https://github.com/SherlockInSpace/cxx-cmake-app)
 - [meta-cxx-cmake](https://github.com/SherlockInSpace/meta-cxx-cmake)
 
+## The snapshot service
+
+Every image build downloads its packages from snapshot.ubuntu.com, so we get the
+same package versions on every rebuild. That service goes down for minutes at a
+time. apt retries each download with backoff and the Dockerfile's `apt-retry`
+repeats a failed step a few times, so short outages pass. A longer one fails the
+build with a message naming the service; re-run the job when it's back.
+`--build-arg UBUNTU_SNAPSHOT=` builds from the live archive for a local
+experiment.
+
 ## Smoke test
 
 `test/smoke.sh` checks a built image against `test/expected-versions.env`. Each
