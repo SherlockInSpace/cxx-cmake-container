@@ -28,4 +28,8 @@ docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g
 ```
 
 Bumping any version in the Dockerfile means editing `expected-versions.env`
-in the same change.
+in the same change. Dependabot opens the pull request for the `ubuntu:26.04`
+digest and for the actions in `.github/workflows`. Dependabot's digest pull
+request stays red until the new digest is copied into `UBUNTU_DIGEST` and
+`expected-versions.env`. The package set comes from the apt snapshot, so the
+real bump is editing `UBUNTU_SNAPSHOT` by hand.
