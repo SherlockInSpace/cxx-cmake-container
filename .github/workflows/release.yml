@@ -1,0 +1,39 @@
+# Every push to main updates the rolling release pull request with
+# CHANGELOG.md and the next version, computed from the commit subjects.
+# Merging it tags vX.Y.Z and creates the GitHub Release.
+# Needs the RELEASE_PLEASE_TOKEN secret, see README "Releases".
+
+name: release
+
+on:
+  push:
+    branches: [main]
+
+# The PAT does all the writing, so the job token stays read-only.
+permissions:
+  contents: read
+
+# Two pushes in a row must not edit the release pull request at the same
+# time, so a run waits for the one in progress to finish.
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    steps:
+      # A pull request or tag created with the workflow's own GITHUB_TOKEN
+      # triggers no workflows, so the gate would never run on the release
+      # pull request and the tag would never publish anything.
+      - name: Check RELEASE_PLEASE_TOKEN is set
+        env:
+          RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_PLEASE_TOKEN" ]; then
+            echo "::error::The RELEASE_PLEASE_TOKEN secret is not set. README.md, section Releases, has the one-time setup."
+            exit 1
+          fi
+
+      - uses: googleapis/release-please-action@v5
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
