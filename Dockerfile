@@ -7,14 +7,14 @@
 
 # ubuntu:26.04 (resolute) by its multi-arch index digest (linux/amd64 and
 # linux/arm64/v8), so both arches get the same manifest list. The digest is
-# resolute-20260811.1 from `docker buildx imagetools inspect ubuntu:26.04` on
-# 2026-09-03. Bump the tag and the digest together.
-ARG UBUNTU_DIGEST=sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
-FROM ubuntu:26.04@${UBUNTU_DIGEST} AS ci
+# written out because Dependabot refreshes it and cannot read one behind an
+# ARG. Bump the tag and the digest together.
+FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b AS ci
 
-# One ARG for the FROM line and versions.txt. Global ARGs are not visible to
-# RUN, so the stage declares it again.
-ARG UBUNTU_DIGEST
+# The FROM digest again, for versions.txt. RUN cannot read the FROM line, so
+# this copy and test/expected-versions.env follow a bump by hand. ci.yml
+# checks that they match.
+ARG UBUNTU_DIGEST=sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
 
 # Apt snapshot (https://snapshot.ubuntu.com). The same ID gives the same
 # package set months later. Empty uses the live archive: a fallback for when
