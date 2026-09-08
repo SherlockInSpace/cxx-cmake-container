@@ -1,0 +1,95 @@
+# The pull request gate. Builds the ci and dev stages on amd64 and arm64,
+# runs test/smoke.sh in both, and lints every commit. Nothing is pushed.
+# Images are published at release.
+
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# A newer push makes a pull request's running build stale, so stop it.
+# Runs on main all finish, so we can tell which merge broke it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: build (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    # Native on both: ubuntu-24.04-arm is real arm64 hardware, no QEMU. The
+    # 26.04 labels are still preview.
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      # One GHA cache per arch. mode=min exports only the final image's layers,
+      # and dev is built on ci, so the dev export covers both stages.
+      - name: Build ci
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: ci
+          tags: cxx-cmake-container:ci
+          load: true
+          push: false
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=min
+
+      - name: Build dev
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: dev
+          tags: cxx-cmake-container:dev
+          load: true
+          push: false
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,scope=${{ matrix.arch }},mode=min
+
+      - name: Smoke test ci
+        run: docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:ci /test/smoke.sh
+
+      # HOST_UID/HOST_GID make the entrypoint remap dev to the runner user,
+      # the same way it does on a developer's machine.
+      - name: Smoke test dev
+        run: >
+          docker run --rm -v "$PWD/test:/test:ro"
+          -e HOST_UID=$(id -u) -e HOST_GID=$(id -g)
+          cxx-cmake-container:dev /test/smoke.sh
+
+  commitlint:
+    name: conventional commit messages
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # The lint walks from the base commit to the head, so it needs history.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - run: npm install --no-save @commitlint/cli@21 @commitlint/config-conventional@21
+
+      - name: Lint every commit in the pull request
+        run: >
+          npx commitlint --verbose
+          --from ${{ github.event.pull_request.base.sha }}
+          --to ${{ github.event.pull_request.head.sha }}
