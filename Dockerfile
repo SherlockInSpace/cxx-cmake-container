@@ -28,11 +28,14 @@ ARG TARGETARCH
 ARG DEBIAN_FRONTEND=noninteractive
 
 # The snapshot is HTTPS and the base image has no CA bundle, so ca-certificates
-# comes from the live archive first. Then point apt at the snapshot.
+# comes from the live archive first. Then point apt at the snapshot, and put
+# back to the snapshot's version whatever that first install brought in.
 RUN <<'EOF'
 set -eu
+dpkg-query -W -f='${Package}=${Version}\n' | sort > /tmp/bootstrap-before
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates
+dpkg-query -W -f='${Package}=${Version}\n' | sort > /tmp/bootstrap-after
 
 snapshot_field=""
 if [ -n "${UBUNTU_SNAPSHOT}" ]; then
@@ -73,6 +76,33 @@ SOURCES
 # Drop the live lists fetched for ca-certificates; from here on everything
 # resolves against the snapshot.
 rm -rf /var/lib/apt/lists/*
+
+# The live archive moves on after the snapshot is taken, so ca-certificates can
+# bring in newer versions than the snapshot has (it did: openssl and
+# libssl3t64 from resolute-updates, after which the snapshot's libssl-dev no
+# longer installed). Reinstall every package the bootstrap installed or
+# upgraded at the snapshot's newest version, downgrading where the live one is
+# newer, so the image never depends on the day it was built. Without a
+# snapshot there is nothing to go back to.
+if [ -n "${UBUNTU_SNAPSHOT}" ]; then
+    apt-get update
+    pins=""
+    for pkg in $(comm -13 /tmp/bootstrap-before /tmp/bootstrap-after | cut -d= -f1); do
+        version=$(apt-cache madison "$pkg" | awk -F'|' 'NR == 1 { gsub(/ /, "", $2); print $2 }')
+        if [ -z "$version" ]; then
+            echo "bootstrap package $pkg is not in snapshot ${UBUNTU_SNAPSHOT}" >&2
+            exit 1
+        fi
+        pins="$pins $pkg=$version"
+    done
+    if [ -n "$pins" ]; then
+        echo "Putting the bootstrap packages back to the snapshot:$pins"
+        # shellcheck disable=SC2086 # one word per package=version
+        apt-get install -y --no-install-recommends --allow-downgrades $pins
+    fi
+    rm -rf /var/lib/apt/lists/*
+fi
+rm -f /tmp/bootstrap-before /tmp/bootstrap-after
 EOF
 
 # The toolchain and what a CMake/CPM build and its CI steps need (git/curl
