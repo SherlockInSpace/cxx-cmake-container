@@ -245,7 +245,7 @@ if ls /usr/bin | grep -E -- '-21$'; then
     exit 1
 fi
 
-for tool in clang clang++ clang-tidy clang-format; do
+for tool in clang clang++ clang-tidy clang-format run-clang-tidy; do
     ln -s "/usr/bin/${tool}-22" "/usr/local/bin/${tool}"
 done
 EOF
