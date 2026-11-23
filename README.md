@@ -15,8 +15,9 @@ Sibling repos:
 ## The snapshot service
 
 Every image build downloads its packages from snapshot.ubuntu.com, so we get the
-same package versions on every rebuild. That service goes down for minutes at a
-time. apt retries each download with backoff and the Dockerfile's `apt-retry`
+same package versions on every rebuild. The service is run by Canonical, and the
+build depends on it: there is no mirror, and falling back to the live archive
+would silently give up reproducibility. It goes down for minutes at a time. apt retries each download with backoff and the Dockerfile's `apt-retry`
 repeats a failed step a few times, so short outages pass. A longer one fails the
 build with a message naming the service; re-run the job when it's back.
 `--build-arg UBUNTU_SNAPSHOT=` builds from the live archive for a local
