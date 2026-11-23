@@ -1,15 +1,26 @@
 # Every push to main updates the rolling release pull request with
 # CHANGELOG.md and the next version, computed from the commit subjects.
-# Merging it tags vX.Y.Z and creates the GitHub Release.
+# Merging it tags vX.Y.Z, creates the GitHub Release, and publishes the ci and
+# dev images to GHCR for linux/amd64 and linux/arm64.
 # Needs the RELEASE_PLEASE_TOKEN secret, see README "Releases".
+#
+# workflow_dispatch(version) only repairs a publish that failed: it builds
+# v<version> again and refuses if ci:<version> already exists. Anything else
+# is a new patch release.
 
 name: release
 
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish again, without the v (for example 0.1.0)"
+        required: true
+        type: string
 
-# The PAT does all the writing, so the job token stays read-only.
+# The PAT does the release-please writing; each job asks for what it needs.
 permissions:
   contents: read
 
@@ -18,13 +29,21 @@ permissions:
 concurrency:
   group: ${{ github.workflow }}
 
+env:
+  IMAGE_PREFIX: ghcr.io/sherlockinspace/cxx-cmake-container
+
 jobs:
   release-please:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+      version: ${{ steps.release.outputs.version }}
     steps:
       # A pull request or tag created with the workflow's own GITHUB_TOKEN
       # triggers no workflows, so the gate would never run on the release
-      # pull request and the tag would never publish anything.
+      # pull request.
       - name: Check RELEASE_PLEASE_TOKEN is set
         env:
           RELEASE_PLEASE_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
@@ -35,5 +54,297 @@ jobs:
           fi
 
       - uses: googleapis/release-please-action@v5
+        id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+
+  # What to publish: the release just created, or the version asked for.
+  target:
+    needs: release-please
+    if: >-
+      always() &&
+      (needs.release-please.outputs.release_created == 'true' ||
+       github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      tag: ${{ steps.pick.outputs.tag }}
+      version: ${{ steps.pick.outputs.version }}
+    steps:
+      - name: Pick the version
+        id: pick
+        env:
+          RELEASED_TAG: ${{ needs.release-please.outputs.tag_name }}
+          RELEASED_VERSION: ${{ needs.release-please.outputs.version }}
+          ASKED_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            version=$ASKED_VERSION
+            tag=v$ASKED_VERSION
+          else
+            version=$RELEASED_VERSION
+            tag=$RELEASED_TAG
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$version' is not X.Y.Z"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      # Logged in, because a package GHCR has not been made public yet looks
+      # missing to an anonymous inspect.
+      - uses: docker/login-action@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Refuse to publish over an existing version
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ steps.pick.outputs.version }}
+        run: |
+          if docker buildx imagetools inspect "$IMAGE_PREFIX/ci:$VERSION" >/dev/null 2>&1; then
+            echo "::error::$IMAGE_PREFIX/ci:$VERSION already exists. Re-publishing only repairs a failed publish; cut a new patch release instead."
+            exit 1
+          fi
+
+  # Each architecture builds both stages natively and pushes them by digest,
+  # untagged. The merge job below puts the two digests of a stage under one
+  # multi-arch index and tags that.
+  build:
+    needs: target
+    if: always() && needs.target.result == 'success'
+    name: build (${{ matrix.arch }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.target.outputs.tag }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Labels go into each image's config, so they are set here; the merge
+      # job can only annotate the index. The revision is the checked-out tag,
+      # which on a repair run is not github.sha.
+      - name: Labels
+        id: labels
+        env:
+          VERSION: ${{ needs.target.outputs.version }}
+        run: |
+          {
+            echo 'common<<EOF'
+            echo "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+            echo "org.opencontainers.image.revision=$(git rev-parse HEAD)"
+            echo "org.opencontainers.image.version=$VERSION"
+            echo "org.opencontainers.image.licenses=MIT"
+            echo "org.opencontainers.image.base.name=docker.io/library/ubuntu:26.04"
+            echo "org.opencontainers.image.base.digest=$(sed -n 's/^ARG UBUNTU_DIGEST=//p' Dockerfile)"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push ci by digest
+        id: ci
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: ci
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}/ci,push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            ${{ steps.labels.outputs.common }}
+            org.opencontainers.image.title=cxx-cmake-container ci
+            org.opencontainers.image.description=cxx-cmake build environment (ci stage): GCC, Clang, CMake and the baseline libraries, versions in /etc/cxx-cmake-container/versions.txt
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+
+      - name: Build and push dev by digest
+        id: dev
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: dev
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}/dev,push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            ${{ steps.labels.outputs.common }}
+            org.opencontainers.image.title=cxx-cmake-container dev
+            org.opencontainers.image.description=cxx-cmake build environment (dev stage): GCC, Clang, CMake and the baseline libraries, versions in /etc/cxx-cmake-container/versions.txt
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+
+      - name: Record the digests
+        env:
+          CI_DIGEST: ${{ steps.ci.outputs.digest }}
+          DEV_DIGEST: ${{ steps.dev.outputs.digest }}
+        run: |
+          mkdir -p digests/ci digests/dev
+          touch "digests/ci/${CI_DIGEST#sha256:}" "digests/dev/${DEV_DIGEST#sha256:}"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: digests-${{ matrix.arch }}
+          path: digests
+          retention-days: 1
+
+  merge:
+    needs: [target, build]
+    if: always() && needs.build.result == 'success'
+    name: publish (${{ matrix.stage }})
+    strategy:
+      fail-fast: false
+      matrix:
+        stage: [ci, dev]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.target.outputs.tag }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: digests-*
+          path: digests
+          merge-multiple: true
+
+      - name: Read the base image and revision
+        id: base
+        run: |
+          digest=$(sed -n 's/^ARG UBUNTU_DIGEST=//p' Dockerfile)
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Tags and annotations
+        id: meta
+        uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: index
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.stage }}
+          flavor: latest=false
+          # X.Y.Z and X.Y always; X only from 1.0, since before 1.0 a minor
+          # bump may break things.
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.target.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.target.outputs.tag }}
+            type=semver,pattern={{major}},value=${{ needs.target.outputs.tag }},enable=${{ !startsWith(needs.target.outputs.tag, 'v0.') }}
+          annotations: |
+            org.opencontainers.image.revision=${{ steps.base.outputs.revision }}
+            org.opencontainers.image.title=cxx-cmake-container ${{ matrix.stage }}
+            org.opencontainers.image.description=cxx-cmake build environment (${{ matrix.stage }} stage): GCC, Clang, CMake and the baseline libraries, versions in /etc/cxx-cmake-container/versions.txt
+            org.opencontainers.image.version=${{ needs.target.outputs.version }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.base.name=docker.io/library/ubuntu:26.04
+            org.opencontainers.image.base.digest=${{ steps.base.outputs.digest }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push the multi-arch index
+        working-directory: digests/${{ matrix.stage }}
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.stage }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          ANNOTATIONS: ${{ steps.meta.outputs.annotations }}
+        run: |
+          args=()
+          while IFS= read -r tag; do [ -n "$tag" ] && args+=(--tag "$tag"); done <<< "$TAGS"
+          while IFS= read -r annotation; do [ -n "$annotation" ] && args+=(--annotation "$annotation"); done <<< "$ANNOTATIONS"
+          refs=()
+          for digest in *; do refs+=("$IMAGE@sha256:$digest"); done
+          docker buildx imagetools create "${args[@]}" "${refs[@]}"
+
+      - name: Check both platforms are in the index
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.stage }}
+          VERSION: ${{ needs.target.outputs.version }}
+          STAGE: ${{ matrix.stage }}
+        run: |
+          docker buildx imagetools inspect "$IMAGE:$VERSION"
+          platforms=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' |
+            jq -r '[.manifests[].platform | select(.os != "unknown") | .os + "/" + .architecture] | sort | join(" ")')
+          if [ "$platforms" != "linux/amd64 linux/arm64" ]; then
+            echo "::error::$IMAGE:$VERSION has '$platforms', expected linux/amd64 and linux/arm64"
+            exit 1
+          fi
+          mkdir -p index
+          docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' |
+            jq -r .digest > "index/$STAGE"
+
+      # A matrix job's outputs come from whichever leg finished last, so each
+      # leg hands its index digest on as an artifact instead.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: index-${{ matrix.stage }}
+          path: index
+          retention-days: 1
+
+  # Consumers pin by digest, so the release says what the digests are.
+  notes:
+    needs: [target, merge]
+    if: always() && needs.merge.result == 'success'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: index-*
+          path: index
+          merge-multiple: true
+
+      - name: Add the index digests to the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.target.outputs.tag }}
+          VERSION: ${{ needs.target.outputs.version }}
+        run: |
+          CI_DIGEST=$(cat index/ci)
+          DEV_DIGEST=$(cat index/dev)
+          gh release view "$TAG" --json body -q .body > notes.md
+          if ! grep -q '^## Images' notes.md; then
+            {
+              echo
+              echo "## Images"
+              echo
+              echo "| Image | Digest |"
+              echo "|---|---|"
+              echo "| \`$IMAGE_PREFIX/ci:$VERSION\` | \`$CI_DIGEST\` |"
+              echo "| \`$IMAGE_PREFIX/dev:$VERSION\` | \`$DEV_DIGEST\` |"
+              echo
+              echo "Pin by digest: \`$IMAGE_PREFIX/dev:$VERSION@$DEV_DIGEST\`."
+            } >> notes.md
+            gh release edit "$TAG" --notes-file notes.md
+          fi
