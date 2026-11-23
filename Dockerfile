@@ -183,7 +183,7 @@ esac
 tarball="cmake-${CMAKE_VERSION}-linux-${arch}.tar.gz"
 url="https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/${tarball}"
 
-curl -fsSL -o "/tmp/${tarball}" "${url}"
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 -o "/tmp/${tarball}" "${url}"
 echo "${sha256}  /tmp/${tarball}" | sha256sum -c -
 tar --strip-components=1 -C /usr/local -xzf "/tmp/${tarball}" \
     --exclude="cmake-${CMAKE_VERSION}-linux-${arch}/doc" \
@@ -263,7 +263,7 @@ base="https://raw.githubusercontent.com/jothepro/doxygen-awesome-css/${DOXYGEN_A
 mkdir -p "${dest}"
 
 while read -r sha256 name; do
-    curl -fsSL -o "${dest}/${name}" "${base}/${name}"
+    curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 -o "${dest}/${name}" "${base}/${name}"
     echo "${sha256}  ${dest}/${name}" | sha256sum -c -
 done <<'FILES'
 5ec49e2dfd097f6b5384e3aae0476eab47748e311fc70e207925f8fcc37477b9 doxygen-awesome.css
