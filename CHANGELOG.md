@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.1...v0.1.2) (2026-11-23)
+
+
+### Bug Fixes
+
+* **docker:** put run-clang-tidy on the PATH ([e332dab](https://github.com/SherlockInSpace/cxx-cmake-container/commit/e332dabf78ecf8d570234ddd2b29f53b567fd01e)), closes [#40](https://github.com/SherlockInSpace/cxx-cmake-container/issues/40)
+
 ## [0.1.1](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.0...v0.1.1) (2026-11-23)
 
 
