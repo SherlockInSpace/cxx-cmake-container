@@ -18,8 +18,9 @@ Canonical.
 | `dev` | `ghcr.io/sherlockinspace/cxx-cmake-container/dev` | Working in a shell. `ci` plus a `dev` user with sudo and zsh, starting in `/work`. |
 
 Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, Google
-Benchmark, the Tracy client library and `tracy-capture`, clang-tidy,
-clang-format, Doxygen with doxygen-awesome-css, and gcovr.
+Benchmark, spdlog, the Tracy client library and `tracy-capture`, clang-tidy,
+clang-format, Doxygen with doxygen-awesome-css, gcovr, and pytest and ruff
+for the app template's Python tests.
 `/etc/cxx-cmake-container/versions.txt` lists the base image digest, the
 snapshot ID and every installed package.
 
@@ -65,6 +66,7 @@ says nothing about how the Yocto toolchain behaves.
 | OpenSSL | 3.5.7 | `libssl-dev` 3.5.5-1ubuntu3.7 | patch release behind |
 | GoogleTest | 1.17.0 | `libgtest-dev` 1.17.0-1build1 | same |
 | Google Benchmark | 1.9.5 | `libbenchmark-dev` 1.9.1-1build1 | patch release behind |
+| spdlog | 1.17.0 | upstream release 1.17.0 with its bundled fmt 12.1, built in the image | same |
 | Tracy | not in Wrynose | upstream release 0.15.0, built in the image | |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
@@ -91,8 +93,9 @@ Before 1.0 a breaking change bumps the minor and everything else the patch.
 To get the same image again, pull it by digest. To build the same image again,
 the Dockerfile fixes its two inputs: the base image by its index digest in the
 `FROM` line, and the apt packages by a snapshot ID (`UBUNTU_SNAPSHOT`) on
-snapshot.ubuntu.com. Downloads from outside apt, CMake, doxygen-awesome-css
-and the Tracy source, are checked against SHA-256 sums in the Dockerfile. The
+snapshot.ubuntu.com. Downloads from outside apt, CMake, doxygen-awesome-css,
+the Tracy and spdlog sources and the ruff wheel, are checked against SHA-256
+sums in the Dockerfile. The
 exception is `tracy-capture`: Tracy's own CMake fetches capstone, zstd and
 PPQSort by the git tags it names, so a rebuild trusts those tags.
 
@@ -142,6 +145,9 @@ table above when a row changes.
   and apt will not downgrade them.
 - **CMake.** Change `CMAKE_VERSION` and both SHA-256 sums, taken from
   `cmake-<version>-SHA-256.txt` on Kitware's release page.
+- **spdlog.** Change `SPDLOG_VERSION` and the SHA-256 of its tag's tarball.
+- **ruff.** Change `RUFF_VERSION` and, for both architectures, the wheel URL
+  and SHA-256 from <https://pypi.org/project/ruff/#files>.
 - **Wrynose point release.** Compare its versions with the table, move the
   snapshot forward until Ubuntu's packages match as closely as they can,
   update the table and commit it as `feat(docker)`.

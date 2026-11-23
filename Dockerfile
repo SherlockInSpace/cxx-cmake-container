@@ -206,6 +206,7 @@ apt-retry install -y --no-install-recommends \
     libgtest-dev \
     libgmock-dev \
     libbenchmark-dev \
+    python3-pytest \
     clang-22 \
     clang-tidy-22 \
     clang-format-22 \
@@ -317,6 +318,61 @@ install -m 0755 /tmp/tracy-capture/tracy-capture /usr/local/bin/tracy-capture
 rm -rf /tmp/tracy.tar.gz "${src}" /tmp/tracy-client /tmp/tracy-capture
 EOF
 
+# spdlog 1.17.0, the app template's logger and Wrynose's version, built shared
+# with its bundled fmt (12.1). Ubuntu's libspdlog-dev uses Ubuntu's fmt 10.1,
+# whose compile-time format strings clang 22 rejects in C++23. The tarball is
+# checked against its SHA-256; a bump changes SPDLOG_VERSION and the hash.
+ARG SPDLOG_VERSION=1.17.0
+
+RUN <<'EOF'
+set -eu
+sha256=d8862955c6d74e5846b3f580b1605d2428b11d97a410d86e2fb13e857cd3a744
+src="/tmp/spdlog-${SPDLOG_VERSION}"
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
+    -o /tmp/spdlog.tar.gz "https://github.com/gabime/spdlog/archive/refs/tags/v${SPDLOG_VERSION}.tar.gz"
+echo "${sha256}  /tmp/spdlog.tar.gz" | sha256sum -c -
+tar -C /tmp -xzf /tmp/spdlog.tar.gz
+cmake -S "${src}" -B /tmp/spdlog-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local -DSPDLOG_BUILD_SHARED=ON \
+    -DSPDLOG_BUILD_EXAMPLE=OFF -DSPDLOG_INSTALL=ON
+cmake --build /tmp/spdlog-build
+cmake --install /tmp/spdlog-build
+ldconfig
+rm -rf /tmp/spdlog.tar.gz "${src}" /tmp/spdlog-build
+EOF
+
+# ruff, the Python linter for the app template's pytest tests. No Ubuntu
+# release packages it, so the binary comes out of the PyPI wheel for this
+# architecture, checked against its SHA-256. A bump changes RUFF_VERSION and
+# both URLs and hashes, taken from https://pypi.org/project/ruff/#files.
+ARG RUFF_VERSION=0.17.6
+
+RUN <<'EOF'
+set -eu
+base=https://files.pythonhosted.org/packages
+case "$(uname -m)" in
+    x86_64)
+        url="${base}/be/48/3df7d81249fd69ee6a49519b149fb5d11e13118fd7d0e8d65329a237087b/ruff-${RUFF_VERSION}-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+        sha256=aa3b08254a732acba246891089a152c47c5733dc36b8ecb76ce8602f8326e5e4
+        ;;
+    aarch64)
+        url="${base}/eb/11/f3032684dcb3a676d7924545153d76fb56f76753e038f2ea650b99c71bdf/ruff-${RUFF_VERSION}-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl"
+        sha256=435241c61af5909a022f76219d3d1bf24730dc1bf0acabb5ddf4b569ab3cbb30
+        ;;
+    *)
+        echo "unsupported architecture: $(uname -m)" >&2
+        exit 1
+        ;;
+esac
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 -o /tmp/ruff.whl "${url}"
+echo "${sha256}  /tmp/ruff.whl" | sha256sum -c -
+python3 -c 'import sys, zipfile; open(sys.argv[2], "wb").write(zipfile.ZipFile(sys.argv[1]).read(sys.argv[3]))' \
+    /tmp/ruff.whl /usr/local/bin/ruff "ruff-${RUFF_VERSION}.data/scripts/ruff"
+chmod 0755 /usr/local/bin/ruff
+rm -f /tmp/ruff.whl
+test "$(ruff --version)" = "ruff ${RUFF_VERSION}"
+EOF
+
 # The base image ships an `ubuntu` user and group at UID/GID 1000. dev puts
 # the host user on 1000, where a leftover account would collide. Remove it so
 # no UID >= 1000 exists in ci.
@@ -344,6 +400,8 @@ mkdir -p /etc/cxx-cmake-container
     echo "doxygen-awesome-css: ${DOXYGEN_AWESOME_CSS_TAG}" \
         "(${DOXYGEN_AWESOME_CSS_COMMIT})"
     echo "tracy: ${TRACY_VERSION}"
+    echo "spdlog: ${SPDLOG_VERSION}"
+    echo "ruff: ${RUFF_VERSION}"
     echo
     echo "# installed packages (dpkg-query -W)"
     dpkg-query -W -f '${binary:Package}=${Version}\n' | sort
