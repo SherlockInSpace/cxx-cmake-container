@@ -57,11 +57,11 @@ says nothing about how the Yocto toolchain behaves.
 |---|---|---|---|
 | GCC | 15.3.0 | `gcc-15` 15.2.0-16ubuntu1 | patch release behind |
 | binutils | 2.46.1 | `binutils` 2.46-3ubuntu2 | patch release behind |
-| glibc | 2.43 | `libc6` 2.43-2ubuntu2.3 | same |
+| glibc | 2.43 | `libc6` 2.43-2ubuntu2.7 | same |
 | CMake | 4.3.1 | Kitware release tarball 4.3.1 | same |
 | Ninja | 1.13.2 | `ninja-build` 1.13.2-1 | same |
 | LLVM/Clang | 22.1.2 | `clang-22` 1:22.1.2-1ubuntu1 | same |
-| OpenSSL | 3.5.7 | `libssl-dev` 3.5.5-1ubuntu3.5 | patch release behind |
+| OpenSSL | 3.5.7 | `libssl-dev` 3.5.5-1ubuntu3.7 | patch release behind |
 | GoogleTest | 1.17.0 | `libgtest-dev` 1.17.0-1build1 | same |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
@@ -131,7 +131,10 @@ table above when a row changes.
   Build, run the smoke test and copy what it reports.
 - **Base digest.** Dependabot opens a pull request that changes the `FROM`
   line. It stays red until the same digest is copied into `UBUNTU_DIGEST` in
-  the Dockerfile and into `expected-versions.env`.
+  the Dockerfile and into `expected-versions.env`. The snapshot has to be no
+  older than the base image (`org.opencontainers.image.created` in its
+  config): a newer base already has packages the older snapshot cannot match,
+  and apt will not downgrade them.
 - **CMake.** Change `CMAKE_VERSION` and both SHA-256 sums, taken from
   `cmake-<version>-SHA-256.txt` on Kitware's release page.
 - **Wrynose point release.** Compare its versions with the table, move the
