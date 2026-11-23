@@ -106,4 +106,12 @@ for cxx in g++ clang++; do
     step PROBE "run the $cxx binary" "$build/probe"
 done
 
+# dev's ccache directory has to exist and be dev's, or a cache volume
+# mounted there comes up owned by root.
+if [ "$(id -un)" = dev ]; then
+    [ -d "$HOME/.cache/ccache" ] && [ -w "$HOME/.cache/ccache" ] \
+        || fail "CCACHE: $HOME/.cache/ccache is not a directory dev can write"
+    echo "ok   CCACHE: $HOME/.cache/ccache"
+fi
+
 echo "smoke test passed"
