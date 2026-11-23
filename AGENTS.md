@@ -20,7 +20,8 @@ you checked locally.
 
 - Never build CI images from the live archive or drop `UBUNTU_SNAPSHOT`. If
   snapshot.ubuntu.com fails, the fix is to re-run later.
-- A download outside apt gets a version `ARG` and a SHA-256 check.
+- A download outside apt gets a version `ARG` and a SHA-256 check. Tracy's
+  own tag fetches for `tracy-capture` are the only exception; add no others.
 - A version change edits `test/expected-versions.env`, and the README's
   version table if a row changes, in the same commit.
 - `UBUNTU_DIGEST` and the `FROM` digest are always the same value.

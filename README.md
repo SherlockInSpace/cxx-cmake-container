@@ -18,8 +18,8 @@ Canonical.
 | `dev` | `ghcr.io/sherlockinspace/cxx-cmake-container/dev` | Working in a shell. `ci` plus a `dev` user with sudo and zsh, starting in `/work`. |
 
 Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, Google
-Benchmark, clang-tidy, clang-format, Doxygen with doxygen-awesome-css, and
-gcovr.
+Benchmark, the Tracy client library and `tracy-capture`, clang-tidy,
+clang-format, Doxygen with doxygen-awesome-css, and gcovr.
 `/etc/cxx-cmake-container/versions.txt` lists the base image digest, the
 snapshot ID and every installed package.
 
@@ -65,6 +65,7 @@ says nothing about how the Yocto toolchain behaves.
 | OpenSSL | 3.5.7 | `libssl-dev` 3.5.5-1ubuntu3.7 | patch release behind |
 | GoogleTest | 1.17.0 | `libgtest-dev` 1.17.0-1build1 | same |
 | Google Benchmark | 1.9.5 | `libbenchmark-dev` 1.9.1-1build1 | patch release behind |
+| Tracy | not in Wrynose | upstream release 0.15.0, built in the image | |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
 against its published SHA-256. `clang`, `clang-tidy` and `clang-format` point
@@ -90,8 +91,10 @@ Before 1.0 a breaking change bumps the minor and everything else the patch.
 To get the same image again, pull it by digest. To build the same image again,
 the Dockerfile fixes its two inputs: the base image by its index digest in the
 `FROM` line, and the apt packages by a snapshot ID (`UBUNTU_SNAPSHOT`) on
-snapshot.ubuntu.com. Downloads from outside apt, CMake and
-doxygen-awesome-css, are checked against SHA-256 sums in the Dockerfile.
+snapshot.ubuntu.com. Downloads from outside apt, CMake, doxygen-awesome-css
+and the Tracy source, are checked against SHA-256 sums in the Dockerfile. The
+exception is `tracy-capture`: Tracy's own CMake fetches capstone, zstd and
+PPQSort by the git tags it names, so a rebuild trusts those tags.
 
 ### The snapshot service
 

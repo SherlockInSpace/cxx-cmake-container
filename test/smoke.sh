@@ -41,6 +41,12 @@ run-clang-tidy --help >/dev/null 2>&1 || fail "TIDY: run-clang-tidy is missing o
 echo "ok   TIDY: run-clang-tidy"
 version GTEST "$GTEST" gtest "$(last_word pkg-config --modversion gtest)"
 version BENCHMARK "$BENCHMARK" benchmark "$(last_word pkg-config --modversion benchmark)"
+tracy_header=/usr/local/include/tracy/common/TracyVersion.hpp
+tracy_part() { sed -n "s/.*$1 = \([0-9]*\);.*/\1/p" "$tracy_header"; }
+version TRACY "$TRACY" TracyVersion.hpp "$(tracy_part Major).$(tracy_part Minor).$(tracy_part Patch)"
+# tracy-capture prints its usage and exits 1 without arguments.
+tracy-capture 2>&1 | grep -q '^Usage: capture' || fail "TRACY: tracy-capture is missing or broken"
+echo "ok   TRACY: tracy-capture"
 version GCOVR "$GCOVR" gcovr "$(last_word gcovr --version)"
 version DOXYGEN "$DOXYGEN" doxygen "$(last_word doxygen --version)"
 
@@ -66,8 +72,9 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(OpenSSL REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
+find_package(Tracy CONFIG REQUIRED)
 add_executable(probe probe.cpp)
-target_link_libraries(probe PRIVATE OpenSSL::Crypto GTest::gtest_main benchmark::benchmark)
+target_link_libraries(probe PRIVATE OpenSSL::Crypto GTest::gtest_main benchmark::benchmark Tracy::TracyClient)
 CMAKE
 
 cat > "$tmp/probe.cpp" <<'CPP'
@@ -78,6 +85,7 @@ cat > "$tmp/probe.cpp" <<'CPP'
 #include <benchmark/benchmark.h>
 #include <gtest/gtest.h>
 #include <openssl/crypto.h>
+#include <tracy/Tracy.hpp>
 
 std::expected<int, std::string> half(int n) {
     if (n % 2 != 0) {
@@ -87,6 +95,7 @@ std::expected<int, std::string> half(int n) {
 }
 
 TEST(Probe, ExpectedAndPrint) {
+    ZoneScoped;
     EXPECT_EQ(half(4).value(), 2);
     EXPECT_EQ(half(3).error(), "odd");
     std::println("{}", OpenSSL_version(OPENSSL_VERSION));
