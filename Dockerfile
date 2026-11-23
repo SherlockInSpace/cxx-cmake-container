@@ -36,9 +36,13 @@ ARG DEBIAN_FRONTEND=noninteractive
 # repeats a failed update or install a few times before giving up.
 RUN <<'EOF'
 set -eu
+# Error-Mode any: by default apt-get update only warns when a source is
+# unreachable and exits 0, so apt-retry would never retry an outage and the
+# install after it would fail with "Unable to locate package".
 cat > /etc/apt/apt.conf.d/80-retries <<'CONF'
 Acquire::Retries "10";
 Acquire::http::Timeout "60";
+APT::Update::Error-Mode "any";
 CONF
 cat > /usr/local/sbin/apt-retry <<'SH'
 #!/bin/sh
@@ -50,7 +54,7 @@ n=1
 while :; do
     if apt-get "$@"; then exit 0; fi
     if [ "$n" -ge 6 ]; then
-        echo "apt-get $1 failed 6 times; if the errors above are download failures, snapshot.ubuntu.com is down (see README)" >&2
+        echo "apt-get $1 failed 6 times; if the errors above are download failures, the package archive (snapshot.ubuntu.com once configured) is unreachable (see README)" >&2
         exit 1
     fi
     sleep $((n * 30)); n=$((n + 1))
