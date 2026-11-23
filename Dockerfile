@@ -281,6 +281,42 @@ FILES
 chmod 0644 "${dest}"/*
 EOF
 
+# Tracy for the performance tier: the TracyClient static library, built with
+# TRACY_ENABLE, with its Tracy::TracyClient CMake package, and the headless
+# tracy-capture. The tarball is checked against its SHA-256. tracy-capture's
+# own dependencies (capstone, zstd, PPQSort) come from Tracy's CMake by the
+# git tags it names, unchecked: the one exception, see CONTRIBUTING.md.
+# NO_ISA_EXTENSIONS keeps -march=native out of a binary built on CI.
+ARG TRACY_VERSION=0.15.0
+
+RUN <<'EOF'
+set -eu
+# CPM needs patch to apply Tracy's PPQSort patches.
+apt-retry update
+apt-retry install -y --no-install-recommends patch
+rm -rf /var/lib/apt/lists/*
+
+sha256=3d57da54aa67d7875da1e8fecd0bd5957675cef73c27dd52bffb6ab8d290a5e6
+src="/tmp/tracy-${TRACY_VERSION}"
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
+    -o /tmp/tracy.tar.gz "https://github.com/wolfpld/tracy/archive/refs/tags/v${TRACY_VERSION}.tar.gz"
+echo "${sha256}  /tmp/tracy.tar.gz" | sha256sum -c -
+tar -C /tmp -xzf /tmp/tracy.tar.gz
+
+cmake -S "${src}" -B /tmp/tracy-client -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
+    -DTRACY_ENABLE=ON
+cmake --build /tmp/tracy-client
+cmake --install /tmp/tracy-client
+
+cmake -S "${src}/capture" -B /tmp/tracy-capture -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DNO_ISA_EXTENSIONS=ON -DNO_CCACHE=ON
+cmake --build /tmp/tracy-capture --target tracy-capture
+install -m 0755 /tmp/tracy-capture/tracy-capture /usr/local/bin/tracy-capture
+
+rm -rf /tmp/tracy.tar.gz "${src}" /tmp/tracy-client /tmp/tracy-capture
+EOF
+
 # The base image ships an `ubuntu` user and group at UID/GID 1000. dev puts
 # the host user on 1000, where a leftover account would collide. Remove it so
 # no UID >= 1000 exists in ci.
@@ -307,6 +343,7 @@ mkdir -p /etc/cxx-cmake-container
     echo "ninja: $(ninja --version)"
     echo "doxygen-awesome-css: ${DOXYGEN_AWESOME_CSS_TAG}" \
         "(${DOXYGEN_AWESOME_CSS_COMMIT})"
+    echo "tracy: ${TRACY_VERSION}"
     echo
     echo "# installed packages (dpkg-query -W)"
     dpkg-query -W -f '${binary:Package}=${Version}\n' | sort

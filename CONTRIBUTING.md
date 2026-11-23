@@ -47,7 +47,8 @@ docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g
   never falls back to the live archive; when snapshot.ubuntu.com is down, wait
   and re-run.
 - Anything downloaded outside apt has a version `ARG` and a SHA-256 checked in
-  the same `RUN`.
+  the same `RUN`. The one exception is what Tracy's CMake fetches by git tag
+  while building `tracy-capture`; don't add another.
 - A version change edits `test/expected-versions.env` in the same commit, and
   the README's version table when a row changes.
 - `ci` stays root. People-facing setup goes in `dev`.
