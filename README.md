@@ -54,8 +54,26 @@ since the last release to `CHANGELOG.md` and sets the next version. Until 1.0
 a breaking change (`!`) bumps the minor and everything else the patch. From
 1.0 on `!` bumps the major, `feat` the minor and the rest the patch. The first
 release is 0.1.0 (`initial-version` in `release-please-config.json`). Merging
-the pull request tags `vX.Y.Z` and creates the GitHub Release. A later workflow
-publishes the images from that release.
+the pull request tags `vX.Y.Z`, creates the GitHub Release, and publishes the
+images.
+
+### Publishing
+
+The same workflow then builds `ci` and `dev` natively on amd64 and arm64,
+pushes each by digest with an SBOM and provenance attestation, and puts the two
+digests of each stage under one multi-arch index tagged `X.Y.Z` and `X.Y` (and
+`X` from 1.0 on; never `latest`). It checks both platforms are in each index and
+adds the two index digests to the release notes, since consumers pin by digest.
+
+If publishing fails after the release exists, run the workflow by hand
+(Actions > release > Run workflow) with the version, for example `0.1.0`. It
+builds that tag again and refuses if `ci:<version>` already exists: re-running
+only repairs a failed publish, and anything else is a new patch release.
+
+GHCR creates both packages private on the first publish. Make each public once,
+under Packages > `cxx-cmake-container/ci` (and `/dev`) > Package settings >
+Change visibility, and check that the package shows this repository under
+"Repository source"; after that `docker pull` works without logging in.
 
 `docs`, `ci`, `chore`, `test` and `refactor` commits stay out of the changelog
 and on their own do not open a release pull request.
