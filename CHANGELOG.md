@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.5](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.4...v0.1.5) (2026-11-23)
+
+
+### Features
+
+* **docker:** app-template tooling — spdlog, pytest, ruff ([664dde7](https://github.com/SherlockInSpace/cxx-cmake-container/commit/664dde71a416218724463c08a79ce06b0c1d47b6)), closes [#10](https://github.com/SherlockInSpace/cxx-cmake-container/issues/10)
+* **docker:** install util 0.3.0 into ci/dev ([98586f0](https://github.com/SherlockInSpace/cxx-cmake-container/commit/98586f0772e725bd604f58d0cde385295a5b95f3)), closes [#11](https://github.com/SherlockInSpace/cxx-cmake-container/issues/11)
+
 ## [0.1.4](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.3...v0.1.4) (2026-11-23)
 
 
