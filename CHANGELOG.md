@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.2...v0.1.3) (2026-11-23)
+
+
+### Features
+
+* **docker:** Google Benchmark ([ed36d9e](https://github.com/SherlockInSpace/cxx-cmake-container/commit/ed36d9e057380b85e743ba8eaaccf6263da7e9d8)), closes [#19](https://github.com/SherlockInSpace/cxx-cmake-container/issues/19)
+
 ## [0.1.2](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.1...v0.1.2) (2026-11-23)
 
 
