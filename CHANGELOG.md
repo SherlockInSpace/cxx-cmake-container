@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.0...v0.1.1) (2026-11-23)
+
+
+### Build
+
+* **docker:** move the base image and snapshot to November 2026 ([be7d5cd](https://github.com/SherlockInSpace/cxx-cmake-container/commit/be7d5cd2421cd58c27e3708ef23ea98fec4769c2)), closes [#37](https://github.com/SherlockInSpace/cxx-cmake-container/issues/37)
+
 ## 0.1.0 (2026-11-23)
 
 
