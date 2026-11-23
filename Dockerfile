@@ -9,17 +9,17 @@
 # linux/arm64/v8), so both arches get the same manifest list. The digest is
 # written out because Dependabot refreshes it and cannot read one behind an
 # ARG. Bump the tag and the digest together.
-FROM ubuntu:26.04@sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b AS ci
+FROM ubuntu:26.04@sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db AS ci
 
 # The FROM digest again, for versions.txt. RUN cannot read the FROM line, so
 # this copy and test/expected-versions.env follow a bump by hand. ci.yml
 # checks that they match.
-ARG UBUNTU_DIGEST=sha256:2260313b31c8c011cd2eebe728008efac1b3982be73eb71348ea2648d2c0e09b
+ARG UBUNTU_DIGEST=sha256:d66b366dac61b575bee2aef07e9c26e8070096fbe84a3d4d3eb0da069b5d76db
 
 # Apt snapshot (https://snapshot.ubuntu.com). The same ID gives the same
 # package set months later. Empty uses the live archive: a fallback for when
 # the snapshot service is down, never for CI.
-ARG UBUNTU_SNAPSHOT=20260901T000000Z
+ARG UBUNTU_SNAPSHOT=20261120T000000Z
 
 # Set by BuildKit (amd64 / arm64); recorded in versions.txt.
 ARG TARGETARCH
