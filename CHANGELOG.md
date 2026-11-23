@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.3...v0.1.4) (2026-11-23)
+
+
+### Features
+
+* **docker:** Tracy ([0742a55](https://github.com/SherlockInSpace/cxx-cmake-container/commit/0742a55bbf3cd846d67696c0546519a6e8d9437c)), closes [#12](https://github.com/SherlockInSpace/cxx-cmake-container/issues/12)
+
 ## [0.1.3](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.2...v0.1.3) (2026-11-23)
 
 
