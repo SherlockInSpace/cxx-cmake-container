@@ -1,36 +1,119 @@
 # cxx-cmake-container
 
-Versioned build-environment images for the cxx-cmake template family. Images
-will be published to GHCR under semver tags (never `latest`), in two stages —
-`ci` and `dev` — for amd64 and arm64.
+Build-environment images for the cxx-cmake templates:
+[cxx-cmake-library](https://github.com/SherlockInSpace/cxx-cmake-library),
+[cxx-cmake-app](https://github.com/SherlockInSpace/cxx-cmake-app) and the
+Yocto layer [meta-cxx-cmake](https://github.com/SherlockInSpace/meta-cxx-cmake).
+One Dockerfile builds two stages for linux/amd64 and linux/arm64, and every
+release publishes both to GHCR.
 
-**Status:** under construction; scope and progress are tracked in the issues.
+Built on Ubuntu 26.04 LTS packages. Not affiliated with or endorsed by
+Canonical.
 
-Sibling repos:
+## Stages
 
-- [cxx-cmake](https://github.com/SherlockInSpace/cxx-cmake)
-- [cxx-cmake-app](https://github.com/SherlockInSpace/cxx-cmake-app)
-- [meta-cxx-cmake](https://github.com/SherlockInSpace/meta-cxx-cmake)
+| Stage | Image | Use |
+|---|---|---|
+| `ci` | `ghcr.io/sherlockinspace/cxx-cmake-container/ci` | CI jobs. Runs as root, because GitHub Actions job containers need it. |
+| `dev` | `ghcr.io/sherlockinspace/cxx-cmake-container/dev` | Working in a shell. `ci` plus a `dev` user with sudo and zsh, starting in `/work`. |
 
-## The snapshot service
+Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, clang-tidy,
+clang-format, Doxygen with doxygen-awesome-css, and gcovr.
+`/etc/cxx-cmake-container/versions.txt` lists the base image digest, the
+snapshot ID and every installed package.
 
-Every image build downloads its packages from snapshot.ubuntu.com, so we get the
-same package versions on every rebuild. The service is run by Canonical, and the
-build depends on it: there is no mirror, and falling back to the live archive
-would silently give up reproducibility. It goes down for minutes at a time. apt retries each download with backoff and the Dockerfile's `apt-retry`
-repeats a failed step a few times, so short outages pass. A longer one fails the
-build with a message naming the service; re-run the job when it's back.
+## Using the image
+
+Mount the directory that holds your checkouts at `/work` and keep the
+compiler cache in a named volume:
+
+```sh
+docker run --rm -it \
+  -v "$PWD:/work" \
+  -v cxx-cmake-ccache:/home/dev/.cache/ccache \
+  -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+  ghcr.io/sherlockinspace/cxx-cmake-container/dev:0.1
+```
+
+With `HOST_UID` and `HOST_GID` set, the entrypoint moves the `dev` account to
+your ids before starting the shell, so files written under `/work` are yours.
+
+For CI, or anything that has to build the same way next year, use the full
+version and the digest from the release notes:
+
+```yaml
+container: ghcr.io/sherlockinspace/cxx-cmake-container/ci:0.1.0@sha256:<digest>
+```
+
+## Versions
+
+The image follows Yocto Wrynose 6.0.2, so code that builds here builds against
+the same tool versions under BitBake. The match is in version numbers only.
+Ubuntu's GCC turns on PIE, `_FORTIFY_SOURCE=3`, `-fcf-protection` and
+`-fstack-clash-protection` by default and Yocto's GCC does not, so a build here
+says nothing about how the Yocto toolchain behaves.
+
+| Component | Wrynose 6.0.2 | Image | Match |
+|---|---|---|---|
+| GCC | 15.3.0 | `gcc-15` 15.2.0-16ubuntu1 | patch release behind |
+| binutils | 2.46.1 | `binutils` 2.46-3ubuntu2 | patch release behind |
+| glibc | 2.43 | `libc6` 2.43-2ubuntu2.3 | same |
+| CMake | 4.3.1 | Kitware release tarball 4.3.1 | same |
+| Ninja | 1.13.2 | `ninja-build` 1.13.2-1 | same |
+| LLVM/Clang | 22.1.2 | `clang-22` 1:22.1.2-1ubuntu1 | same |
+| OpenSSL | 3.5.7 | `libssl-dev` 3.5.5-1ubuntu3.5 | patch release behind |
+| GoogleTest | 1.17.0 | `libgtest-dev` 1.17.0-1build1 | same |
+
+Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
+against its published SHA-256. `clang`, `clang-tidy` and `clang-format` point
+at LLVM 22; Ubuntu's unversioned packages would install LLVM 21.
+
+## Tags
+
+A release is tagged `X.Y.Z` and `X.Y`, and from 1.0 on also `X`. There is no
+`latest`. An image named `latest` changes compiler whenever a release happens,
+without anyone who uses it deciding to move, and a template's CI should change
+toolchain only in a commit that says so.
+
+From 1.0 the version means:
+
+- major: a new toolchain baseline, such as a new Yocto release or GCC major
+- minor: a tool added, or the next Wrynose point release followed
+- patch: a rebuild or fix that changes no tool version
+
+Before 1.0 a breaking change bumps the minor and everything else the patch.
+
+## Reproducibility
+
+To get the same image again, pull it by digest. To build the same image again,
+the Dockerfile fixes its two inputs: the base image by its index digest in the
+`FROM` line, and the apt packages by a snapshot ID (`UBUNTU_SNAPSHOT`) on
+snapshot.ubuntu.com. Downloads from outside apt, CMake and
+doxygen-awesome-css, are checked against SHA-256 sums in the Dockerfile.
+
+### The snapshot service
+
+Every build downloads its packages from snapshot.ubuntu.com. The service is
+run by Canonical and there is no mirror; falling back to the live archive
+would quietly give up the fixed package set. It goes down for minutes at a
+time. apt retries each download with backoff and the Dockerfile's `apt-retry`
+repeats a failed step a few times, so short outages pass. A longer one fails
+the build with a message naming the service; re-run the job when it's back.
 `--build-arg UBUNTU_SNAPSHOT=` builds from the live archive for a local
 experiment.
 
-## Smoke test
+## Building and testing locally
 
-`test/smoke.sh` checks a built image against `test/expected-versions.env`. Each
-tool has to report the version listed there and
-`/etc/cxx-cmake-container/versions.txt` has to name the same base digest and
-snapshot ID. Then a small C++23 project that finds OpenSSL and GoogleTest is
-configured with Ninja, built with g++ and clang++ and run. It works in both
-stages:
+```sh
+docker build --target ci -t cxx-cmake-container:ci-local .
+docker build --target dev -t cxx-cmake-container:dev-local .
+```
+
+`test/smoke.sh` checks a built image against `test/expected-versions.env`.
+Each tool has to report the version listed there and `versions.txt` has to
+name the same base digest and snapshot ID. Then a small C++23 project that
+finds OpenSSL and GoogleTest is configured with Ninja, built with g++ and
+clang++ and run. It works in both stages:
 
 ```sh
 docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:ci-local /test/smoke.sh
@@ -38,62 +121,28 @@ docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g
   cxx-cmake-container:dev-local /test/smoke.sh
 ```
 
-Bumping any version in the Dockerfile means editing `expected-versions.env`
-in the same change. Dependabot opens the pull request for the `ubuntu:26.04`
-digest and for the actions in `.github/workflows`. Dependabot's digest pull
-request stays red until the new digest is copied into `UBUNTU_DIGEST` and
-`expected-versions.env`. The package set comes from the apt snapshot, so the
-real bump is editing `UBUNTU_SNAPSHOT` by hand.
+## Bumping versions
 
-## Releases
+Every bump edits `test/expected-versions.env` in the same commit, and the
+table above when a row changes.
 
-The version is the image version and the commit subjects on `main` decide it.
-`.github/workflows/release.yml` runs release-please on every push. It keeps one
-rolling pull request that adds the `feat`, `fix`, `build` and `revert` commits
-since the last release to `CHANGELOG.md` and sets the next version. Until 1.0
-a breaking change (`!`) bumps the minor and everything else the patch. From
-1.0 on `!` bumps the major, `feat` the minor and the rest the patch. The first
-release is 0.1.0 (`initial-version` in `release-please-config.json`). Merging
-the pull request tags `vX.Y.Z`, creates the GitHub Release, and publishes the
-images.
+- **Snapshot.** Set `UBUNTU_SNAPSHOT` to a newer ID (`YYYYMMDDTHHMMSSZ`). The
+  package set comes from the snapshot, so this is the real package bump.
+  Build, run the smoke test and copy what it reports.
+- **Base digest.** Dependabot opens a pull request that changes the `FROM`
+  line. It stays red until the same digest is copied into `UBUNTU_DIGEST` in
+  the Dockerfile and into `expected-versions.env`.
+- **CMake.** Change `CMAKE_VERSION` and both SHA-256 sums, taken from
+  `cmake-<version>-SHA-256.txt` on Kitware's release page.
+- **Wrynose point release.** Compare its versions with the table, move the
+  snapshot forward until Ubuntu's packages match as closely as they can,
+  update the table and commit it as `feat(docker)`.
 
-### Publishing
+## Licence
 
-The same workflow then builds `ci` and `dev` natively on amd64 and arm64,
-pushes each by digest with an SBOM and provenance attestation, and puts the two
-digests of each stage under one multi-arch index tagged `X.Y.Z` and `X.Y` (and
-`X` from 1.0 on; never `latest`). It checks both platforms are in each index and
-adds the two index digests to the release notes, since consumers pin by digest.
+The scripts and Dockerfile in this repository are MIT, and that is what the
+images' `org.opencontainers.image.licenses` label says. The software inside
+the images keeps its own licences; each package's terms are in
+`/usr/share/doc/<package>/copyright`.
 
-If publishing fails after the release exists, run the workflow by hand
-(Actions > release > Run workflow) with the version, for example `0.1.0`. It
-builds that tag again and refuses if `ci:<version>` already exists: re-running
-only repairs a failed publish, and anything else is a new patch release.
-
-GHCR creates both packages private on the first publish. Make each public once,
-under Packages > `cxx-cmake-container/ci` (and `/dev`) > Package settings >
-Change visibility, and check that the package shows this repository under
-"Repository source"; after that `docker pull` works without logging in.
-
-`docs`, `ci`, `chore`, `test` and `refactor` commits stay out of the changelog
-and on their own do not open a release pull request.
-
-### One-time setup
-
-The workflow needs a fine-grained personal access token in the
-`RELEASE_PLEASE_TOKEN` secret and fails at its first step without one. GitHub
-runs no workflows on pull requests or tags created with a workflow's own
-`GITHUB_TOKEN`, so with the default token the release pull request would never
-pass the gate and the tag would never publish anything.
-
-Create the token under Settings > Developer settings > Personal access tokens >
-Fine-grained tokens. Repository access: this repository only. Permissions:
-Contents read and write, Pull requests read and write, and Issues read and
-write (release-please labels the pull request). Then:
-
-```sh
-gh secret set RELEASE_PLEASE_TOKEN -R SherlockInSpace/cxx-cmake-container
-```
-
-Fine-grained tokens expire, so a 401 from the release-please step means setting
-a new one the same way.
+[CONTRIBUTING.md](CONTRIBUTING.md) covers changes and releases.
