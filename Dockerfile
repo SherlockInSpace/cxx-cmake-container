@@ -334,14 +334,16 @@ rm -rf /var/lib/apt/lists/*
 EOF
 
 # ci removed the stock ubuntu account, so 1000 is free. The entrypoint runs
-# as dev and needs the sudo rule to remap its own account.
+# as dev and needs the sudo rule to remap its own account. A new volume
+# mounted on the ccache directory copies its owner from the image, so it is
+# created here for dev.
 RUN <<'EOF'
 set -eu
 groupadd --gid "${GID}" dev
 useradd --uid "${UID}" --gid dev --create-home --shell /usr/bin/zsh dev
 echo 'dev ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/dev
 chmod 0440 /etc/sudoers.d/dev
-install -d -o dev -g dev /work
+install -d -o dev -g dev /work /home/dev/.cache /home/dev/.cache/ccache
 EOF
 
 COPY --chown=dev:dev docker/zshrc /home/dev/.zshrc
