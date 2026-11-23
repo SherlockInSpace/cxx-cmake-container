@@ -17,8 +17,9 @@ Canonical.
 | `ci` | `ghcr.io/sherlockinspace/cxx-cmake-container/ci` | CI jobs. Runs as root, because GitHub Actions job containers need it. |
 | `dev` | `ghcr.io/sherlockinspace/cxx-cmake-container/dev` | Working in a shell. `ci` plus a `dev` user with sudo and zsh, starting in `/work`. |
 
-Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, clang-tidy,
-clang-format, Doxygen with doxygen-awesome-css, and gcovr.
+Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, Google
+Benchmark, clang-tidy, clang-format, Doxygen with doxygen-awesome-css, and
+gcovr.
 `/etc/cxx-cmake-container/versions.txt` lists the base image digest, the
 snapshot ID and every installed package.
 
@@ -63,6 +64,7 @@ says nothing about how the Yocto toolchain behaves.
 | LLVM/Clang | 22.1.2 | `clang-22` 1:22.1.2-1ubuntu1 | same |
 | OpenSSL | 3.5.7 | `libssl-dev` 3.5.5-1ubuntu3.7 | patch release behind |
 | GoogleTest | 1.17.0 | `libgtest-dev` 1.17.0-1build1 | same |
+| Google Benchmark | 1.9.5 | `libbenchmark-dev` 1.9.1-1build1 | patch release behind |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
 against its published SHA-256. `clang`, `clang-tidy` and `clang-format` point

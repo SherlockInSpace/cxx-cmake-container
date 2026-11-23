@@ -205,6 +205,7 @@ apt-retry install -y --no-install-recommends \
     libssl-dev \
     libgtest-dev \
     libgmock-dev \
+    libbenchmark-dev \
     clang-22 \
     clang-tidy-22 \
     clang-format-22 \
