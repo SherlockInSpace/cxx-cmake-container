@@ -310,7 +310,7 @@ jobs:
           path: index
           retention-days: 1
 
-  # Consumers pin by digest, so the release says what the digests are.
+  # Consumers use the images by digest, so the release says what they are.
   notes:
     needs: [target, merge]
     if: always() && needs.merge.result == 'success'
@@ -344,7 +344,7 @@ jobs:
               echo "| \`$IMAGE_PREFIX/ci:$VERSION\` | \`$CI_DIGEST\` |"
               echo "| \`$IMAGE_PREFIX/dev:$VERSION\` | \`$DEV_DIGEST\` |"
               echo
-              echo "Pin by digest: \`$IMAGE_PREFIX/dev:$VERSION@$DEV_DIGEST\`."
+              echo "Use by digest: \`$IMAGE_PREFIX/dev:$VERSION@$DEV_DIGEST\`."
             } >> notes.md
             gh release edit "$TAG" --notes-file notes.md
           fi
