@@ -20,7 +20,9 @@ Canonical.
 Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, Google
 Benchmark, spdlog, the Tracy client library and `tracy-capture`, clang-tidy,
 clang-format, Doxygen with doxygen-awesome-css, gcovr, and pytest and ruff
-for the app template's Python tests.
+for the app template's Python tests. They also have the library template's
+latest release, `util`, installed under `/usr/local` for the app template to
+find.
 `/etc/cxx-cmake-container/versions.txt` lists the base image digest, the
 snapshot ID and every installed package.
 
@@ -67,6 +69,7 @@ says nothing about how the Yocto toolchain behaves.
 | GoogleTest | 1.17.0 | `libgtest-dev` 1.17.0-1build1 | same |
 | Google Benchmark | 1.9.5 | `libbenchmark-dev` 1.9.1-1build1 | patch release behind |
 | spdlog | 1.17.0 | upstream release 1.17.0 with its bundled fmt 12.1, built in the image | same |
+| util | meta-cxx-cmake's `util` recipe | cxx-cmake-library release 0.3.0, built in the image | |
 | Tracy | not in Wrynose | upstream release 0.15.0, built in the image | |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
@@ -94,8 +97,8 @@ To get the same image again, pull it by digest. To build the same image again,
 the Dockerfile fixes its two inputs: the base image by its index digest in the
 `FROM` line, and the apt packages by a snapshot ID (`UBUNTU_SNAPSHOT`) on
 snapshot.ubuntu.com. Downloads from outside apt, CMake, doxygen-awesome-css,
-the Tracy and spdlog sources and the ruff wheel, are checked against SHA-256
-sums in the Dockerfile. The
+the Tracy and spdlog sources, the ruff wheel and the util release, are
+checked against SHA-256 sums in the Dockerfile. The
 exception is `tracy-capture`: Tracy's own CMake fetches capstone, zstd and
 PPQSort by the git tags it names, so a rebuild trusts those tags.
 
@@ -148,6 +151,8 @@ table above when a row changes.
 - **spdlog.** Change `SPDLOG_VERSION` and the SHA-256 of its tag's tarball.
 - **ruff.** Change `RUFF_VERSION` and, for both architectures, the wheel URL
   and SHA-256 from <https://pypi.org/project/ruff/#files>.
+- **util.** After a cxx-cmake-library release, change `UTIL_VERSION` and the
+  SHA-256 of its tag's tarball, and `UTIL` in `expected-versions.env`.
 - **Wrynose point release.** Compare its versions with the table, move the
   snapshot forward until Ubuntu's packages match as closely as they can,
   update the table and commit it as `feat(docker)`.

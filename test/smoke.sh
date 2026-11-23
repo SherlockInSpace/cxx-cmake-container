@@ -47,6 +47,7 @@ version TRACY "$TRACY" TracyVersion.hpp "$(tracy_part Major).$(tracy_part Minor)
 version SPDLOG "$SPDLOG" spdlog "$(last_word pkg-config --modversion spdlog)"
 version PYTEST "$PYTEST" pytest "$(python3 -m pytest --version 2>&1 | head -n1 | sed 's/.* //')"
 version RUFF "$RUFF" ruff "$(last_word ruff --version)"
+version UTIL "$UTIL" utilConfigVersion.cmake "$(sed -n 's/^set(PACKAGE_VERSION "\(.*\)")$/\1/p' /usr/local/lib/cmake/util/utilConfigVersion.cmake)"
 # tracy-capture prints its usage and exits 1 without arguments.
 tracy-capture 2>&1 | grep -q '^Usage: capture' || fail "TRACY: tracy-capture is missing or broken"
 echo "ok   TRACY: tracy-capture"
@@ -77,8 +78,9 @@ find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(Tracy CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
+find_package(util CONFIG REQUIRED)
 add_executable(probe probe.cpp)
-target_link_libraries(probe PRIVATE OpenSSL::Crypto GTest::gtest_main benchmark::benchmark Tracy::TracyClient spdlog::spdlog)
+target_link_libraries(probe PRIVATE OpenSSL::Crypto GTest::gtest_main benchmark::benchmark Tracy::TracyClient spdlog::spdlog util::util)
 CMAKE
 
 cat > "$tmp/probe.cpp" <<'CPP'
@@ -90,6 +92,7 @@ cat > "$tmp/probe.cpp" <<'CPP'
 #include <gtest/gtest.h>
 #include <openssl/crypto.h>
 #include <spdlog/spdlog.h>
+#include <util/bloom.hpp>
 #include <tracy/Tracy.hpp>
 
 std::expected<int, std::string> half(int n) {
@@ -105,6 +108,9 @@ TEST(Probe, ExpectedAndPrint) {
     EXPECT_EQ(half(3).error(), "odd");
     std::println("{}", OpenSSL_version(OPENSSL_VERSION));
     spdlog::info("half of 4 is {}", half(4).value());
+    util::Bloom filter;
+    filter.insert("probe");
+    EXPECT_TRUE(filter.contains("probe"));
     int n = 4;
     benchmark::DoNotOptimize(n);
 }

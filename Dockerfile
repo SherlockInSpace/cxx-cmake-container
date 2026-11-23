@@ -373,6 +373,28 @@ rm -f /tmp/ruff.whl
 test "$(ruff --version)" = "ruff ${RUFF_VERSION}"
 EOF
 
+# util, the library template's latest release, so the app template finds it
+# with find_package and needs no checkout of the library. Built shared, its
+# default, from the tag's tarball checked against its SHA-256. A bump changes
+# UTIL_VERSION and the hash.
+ARG UTIL_VERSION=0.3.0
+
+RUN <<'EOF'
+set -eu
+sha256=e8d0141614fb14a78f2b6976e60dcfc233a135c8fe64b36b80babac6b6478b6c
+src="/tmp/cxx-cmake-library-${UTIL_VERSION}"
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 \
+    -o /tmp/util.tar.gz "https://github.com/SherlockInSpace/cxx-cmake-library/archive/refs/tags/v${UTIL_VERSION}.tar.gz"
+echo "${sha256}  /tmp/util.tar.gz" | sha256sum -c -
+tar -C /tmp -xzf /tmp/util.tar.gz
+cmake -S "${src}" -B /tmp/util-build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local -DBUILD_TESTING=OFF
+cmake --build /tmp/util-build
+cmake --install /tmp/util-build
+ldconfig
+rm -rf /tmp/util.tar.gz "${src}" /tmp/util-build
+EOF
+
 # The base image ships an `ubuntu` user and group at UID/GID 1000. dev puts
 # the host user on 1000, where a leftover account would collide. Remove it so
 # no UID >= 1000 exists in ci.
@@ -402,6 +424,7 @@ mkdir -p /etc/cxx-cmake-container
     echo "tracy: ${TRACY_VERSION}"
     echo "spdlog: ${SPDLOG_VERSION}"
     echo "ruff: ${RUFF_VERSION}"
+    echo "util: ${UTIL_VERSION}"
     echo
     echo "# installed packages (dpkg-query -W)"
     dpkg-query -W -f '${binary:Package}=${Version}\n' | sort
