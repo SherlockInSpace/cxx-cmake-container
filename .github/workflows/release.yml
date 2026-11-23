@@ -222,6 +222,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -286,6 +288,7 @@ jobs:
           docker buildx imagetools create "${args[@]}" "${refs[@]}"
 
       - name: Check both platforms are in the index
+        id: index
         env:
           IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.stage }}
           VERSION: ${{ needs.target.outputs.version }}
@@ -299,8 +302,19 @@ jobs:
             exit 1
           fi
           mkdir -p index
-          docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' |
-            jq -r .digest > "index/$STAGE"
+          digest=$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' |
+            jq -r .digest)
+          echo "$digest" > "index/$STAGE"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      # A signed statement that this repository's release workflow built the
+      # index from the tag's commit, stored on GHCR next to the image.
+      # gh attestation verify checks it (README "Provenance").
+      - uses: actions/attest-build-provenance@v4
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.stage }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          push-to-registry: true
 
       # A matrix job's outputs come from whichever leg finished last, so each
       # leg hands its index digest on as an artifact instead.

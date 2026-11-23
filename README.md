@@ -113,6 +113,20 @@ the build with a message naming the service; re-run the job when it's back.
 `--build-arg UBUNTU_SNAPSHOT=` builds from the live archive for a local
 experiment.
 
+## Provenance
+
+Every published index has a signed build-provenance attestation, stored on GHCR
+next to the image: a statement, signed through GitHub's OIDC, that this
+repository's release workflow built that digest from the tag's commit. Check it
+before trusting an image:
+
+```sh
+gh attestation verify oci://ghcr.io/sherlockinspace/cxx-cmake-container/ci:X.Y.Z \
+  --repo SherlockInSpace/cxx-cmake-container
+```
+
+Each per-architecture image also has the SBOM and provenance BuildKit writes.
+
 ## Building and testing locally
 
 ```sh
