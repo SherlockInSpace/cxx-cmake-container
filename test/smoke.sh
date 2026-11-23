@@ -44,6 +44,9 @@ version BENCHMARK "$BENCHMARK" benchmark "$(last_word pkg-config --modversion be
 tracy_header=/usr/local/include/tracy/common/TracyVersion.hpp
 tracy_part() { sed -n "s/.*$1 = \([0-9]*\);.*/\1/p" "$tracy_header"; }
 version TRACY "$TRACY" TracyVersion.hpp "$(tracy_part Major).$(tracy_part Minor).$(tracy_part Patch)"
+version SPDLOG "$SPDLOG" spdlog "$(last_word pkg-config --modversion spdlog)"
+version PYTEST "$PYTEST" pytest "$(python3 -m pytest --version 2>&1 | head -n1 | sed 's/.* //')"
+version RUFF "$RUFF" ruff "$(last_word ruff --version)"
 # tracy-capture prints its usage and exits 1 without arguments.
 tracy-capture 2>&1 | grep -q '^Usage: capture' || fail "TRACY: tracy-capture is missing or broken"
 echo "ok   TRACY: tracy-capture"
@@ -73,8 +76,9 @@ find_package(OpenSSL REQUIRED)
 find_package(GTest CONFIG REQUIRED)
 find_package(benchmark CONFIG REQUIRED)
 find_package(Tracy CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 add_executable(probe probe.cpp)
-target_link_libraries(probe PRIVATE OpenSSL::Crypto GTest::gtest_main benchmark::benchmark Tracy::TracyClient)
+target_link_libraries(probe PRIVATE OpenSSL::Crypto GTest::gtest_main benchmark::benchmark Tracy::TracyClient spdlog::spdlog)
 CMAKE
 
 cat > "$tmp/probe.cpp" <<'CPP'
@@ -85,6 +89,7 @@ cat > "$tmp/probe.cpp" <<'CPP'
 #include <benchmark/benchmark.h>
 #include <gtest/gtest.h>
 #include <openssl/crypto.h>
+#include <spdlog/spdlog.h>
 #include <tracy/Tracy.hpp>
 
 std::expected<int, std::string> half(int n) {
@@ -99,6 +104,7 @@ TEST(Probe, ExpectedAndPrint) {
     EXPECT_EQ(half(4).value(), 2);
     EXPECT_EQ(half(3).error(), "odd");
     std::println("{}", OpenSSL_version(OPENSSL_VERSION));
+    spdlog::info("half of 4 is {}", half(4).value());
     int n = 4;
     benchmark::DoNotOptimize(n);
 }
@@ -122,6 +128,14 @@ for cxx in g++ clang++; do
     step PROBE "build with $cxx" cmake --build "$build"
     step PROBE "run the $cxx binary" "$build/probe"
 done
+
+# The app template's Python tier: pytest runs a test, ruff lints it.
+cat > "$tmp/test_probe.py" <<'PY'
+def test_probe():
+    assert sum(range(4)) == 6
+PY
+step PYTHON "pytest runs a test" python3 -m pytest -q -p no:cacheprovider "$tmp/test_probe.py"
+step PYTHON "ruff checks it" ruff check --no-cache "$tmp/test_probe.py"
 
 # dev's ccache directory has to exist and be dev's, or a cache volume
 # mounted there comes up owned by root.
