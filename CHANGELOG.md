@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.5...v0.1.6) (2026-11-24)
+
+
+### Features
+
+* **docker:** yocto stage with the meta-cxx-cmake SDK ([79bcf75](https://github.com/SherlockInSpace/cxx-cmake-container/commit/79bcf75692fd02b277335d385b6241664c363222)), closes [#13](https://github.com/SherlockInSpace/cxx-cmake-container/issues/13)
+
 ## [0.1.5](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.4...v0.1.5) (2026-11-23)
 
 
