@@ -67,21 +67,22 @@ version. Merging that pull request tags `vX.Y.Z`, creates the GitHub Release
 and publishes the images. The first release is 0.1.0 (`initial-version` in
 `release-please-config.json`).
 
-Publishing builds `ci` and `dev` natively on amd64 and arm64, pushes each by
-digest with an SBOM and provenance attestation, and puts the two digests of
-each stage under one multi-arch index tagged as the README describes. It
-checks that both platforms are in each index and adds the two index digests to
-the release notes.
+Publishing builds `ci`, `dev` and `yocto` natively on amd64 and arm64, pushes
+each by digest with an SBOM and provenance attestation, and puts the two
+digests of each stage under one multi-arch index tagged as the README
+describes. It checks that both platforms are in each index and adds the index
+digests to the release notes.
 
 If publishing fails after the release exists, run the workflow by hand
 (Actions > release > Run workflow) with the version, for example `0.1.0`. It
 builds that tag again and refuses if `ci:<version>` already exists: re-running
 only repairs a failed publish, and anything else is a new patch release.
 
-GHCR creates both packages private on the first publish. Make each public once,
-under Packages > `cxx-cmake-container/ci` (and `/dev`) > Package settings >
-Change visibility, and check that the package shows this repository under
-"Repository source"; after that `docker pull` works without logging in.
+GHCR creates each package private on its first publish. Make each public
+once, under Packages > `cxx-cmake-container/ci` (and `/dev`, `/yocto`) >
+Package settings > Change visibility, and check that the package shows this
+repository under "Repository source"; after that `docker pull` works without
+logging in.
 
 ### Release token
 
