@@ -17,7 +17,8 @@ made. [README.md](README.md) is the manual for using the images.
 4. **Keep pull requests small**: one issue, one to a few commits. Say in the
    description what you verified and how, and what you could not.
 5. **CI is the gate.** A pull request merges when `build (amd64)`,
-   `build (arm64)` and `conventional commit messages` are green.
+   `build (arm64)`, `yocto (amd64)`, `yocto (arm64)` and `conventional commit
+   messages` are green.
 
 The commit type decides the next release, so choose it for what the change
 means to someone using the image:
