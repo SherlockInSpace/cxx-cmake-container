@@ -4,8 +4,8 @@ Build-environment images for the cxx-cmake templates:
 [cxx-cmake-library](https://github.com/SherlockInSpace/cxx-cmake-library),
 [cxx-cmake-app](https://github.com/SherlockInSpace/cxx-cmake-app) and the
 Yocto layer [meta-cxx-cmake](https://github.com/SherlockInSpace/meta-cxx-cmake).
-One Dockerfile builds two stages for linux/amd64 and linux/arm64, and every
-release publishes both to GHCR.
+One Dockerfile builds three stages for linux/amd64 and linux/arm64, and every
+release publishes all three to GHCR.
 
 Built on Ubuntu 26.04 LTS packages. Not affiliated with or endorsed by
 Canonical.
@@ -16,8 +16,9 @@ Canonical.
 |---|---|---|
 | `ci` | `ghcr.io/sherlockinspace/cxx-cmake-container/ci` | CI jobs. Runs as root, because GitHub Actions job containers need it. |
 | `dev` | `ghcr.io/sherlockinspace/cxx-cmake-container/dev` | Working in a shell. `ci` plus a `dev` user with sudo and zsh, starting in `/work`. |
+| `yocto` | `ghcr.io/sherlockinspace/cxx-cmake-container/yocto` | Cross-compiling for the Yocto target. `ci` plus the meta-cxx-cmake SDK in `/opt/poky/6.0.2`. |
 
-Both have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, Google
+All three have GCC, Clang, CMake, Ninja, ccache, OpenSSL, GoogleTest, Google
 Benchmark, spdlog, the Tracy client library and `tracy-capture`, clang-tidy,
 clang-format, Doxygen with doxygen-awesome-css, gcovr, and pytest and ruff
 for the app template's Python tests. They also have the library template's
@@ -49,6 +50,18 @@ version and the digest from the release notes:
 container: ghcr.io/sherlockinspace/cxx-cmake-container/ci:0.1.0@sha256:<digest>
 ```
 
+In `yocto`, source the SDK environment first. It puts the cross compiler and
+the SDK's CMake on `PATH` and sets `CMAKE_TOOLCHAIN_FILE`, so CMake needs no
+toolchain argument. cxx-cmake-app's `target` preset is set up this way:
+
+```sh
+. "$YOCTO_SDK_ENV"
+cmake --preset target
+```
+
+The SDK is built for the meta-cxx-cmake layer's `qemuarm64` machine: what it
+builds runs on aarch64 hardware, not in the container.
+
 ## Versions
 
 The image follows Yocto Wrynose 6.0.2, so code that builds here builds against
@@ -71,6 +84,7 @@ says nothing about how the Yocto toolchain behaves.
 | spdlog | 1.17.0 | upstream release 1.17.0 with its bundled fmt 12.1, built in the image | same |
 | util | meta-cxx-cmake's `util` recipe | cxx-cmake-library release 0.3.0, built in the image | |
 | Tracy | not in Wrynose | upstream release 0.15.0, built in the image | |
+| Yocto SDK (`yocto` only) | 6.0.2 | meta-cxx-cmake release 0.1.0 | same |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
 against its published SHA-256. `clang`, `clang-tidy` and `clang-format` point
@@ -132,6 +146,7 @@ Each per-architecture image also has the SBOM and provenance BuildKit writes.
 ```sh
 docker build --target ci -t cxx-cmake-container:ci-local .
 docker build --target dev -t cxx-cmake-container:dev-local .
+docker build --target yocto -t cxx-cmake-container:yocto-local .
 ```
 
 `test/smoke.sh` checks a built image against `test/expected-versions.env`.
@@ -144,6 +159,14 @@ clang++ and run. It works in both stages:
 docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:ci-local /test/smoke.sh
 docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
   cxx-cmake-container:dev-local /test/smoke.sh
+```
+
+`test/smoke-yocto.sh` checks `yocto`: the SDK version in `versions.txt`, the
+SDK's GCC and CMake, and a project that finds util, spdlog and GoogleTest in
+the target sysroot and cross-compiles to aarch64. It runs nothing it builds.
+
+```sh
+docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:yocto-local /test/smoke-yocto.sh
 ```
 
 ## Bumping versions
