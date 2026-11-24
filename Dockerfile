@@ -472,3 +472,49 @@ USER dev
 WORKDIR /work
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
 CMD ["zsh"]
+
+# yocto: ci plus the SDK from meta-cxx-cmake, for cross-compiling to the
+# layer's qemuarm64 target. Source $YOCTO_SDK_ENV and run CMake as usual:
+# the SDK exports CMAKE_TOOLCHAIN_FILE. amd64 gets the SDK built for x86_64
+# hosts, arm64 the one for aarch64 hosts. What it builds runs only on aarch64
+# hardware.
+FROM ci AS yocto
+
+# The installers are assets of the meta-cxx-cmake release and the hashes come
+# from its SHA256SUMS. A bump changes META_CXX_CMAKE_VERSION and both hashes.
+ARG META_CXX_CMAKE_VERSION=0.1.0
+ARG YOCTO_VERSION=6.0.2
+
+RUN <<'EOF'
+set -eu
+case "$(uname -m)" in
+    x86_64)
+        host=x86_64
+        sha256=69e91be24cc965c1d008f3fa5c7c52523f354ede464c9961f5c4280c4dfe4c30
+        ;;
+    aarch64)
+        host=aarch64
+        sha256=47e8853bcb65c03d4c7ffa5574e3c9d028e03bfc2c1732d6e7bb66e8d5c3e6e6
+        ;;
+    *)
+        echo "unsupported architecture: $(uname -m)" >&2
+        exit 1
+        ;;
+esac
+
+installer="poky-glibc-${host}-core-image-minimal-cortexa57-qemuarm64-toolchain-${YOCTO_VERSION}.sh"
+url="https://github.com/SherlockInSpace/meta-cxx-cmake/releases/download/v${META_CXX_CMAKE_VERSION}/${installer}"
+
+curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 --connect-timeout 30 -o "/tmp/${installer}" "${url}"
+echo "${sha256}  /tmp/${installer}" | sha256sum -c -
+sh "/tmp/${installer}" -y -d "/opt/poky/${YOCTO_VERSION}"
+rm -f "/tmp/${installer}"
+
+{
+    echo
+    echo "meta-cxx-cmake: ${META_CXX_CMAKE_VERSION}"
+    echo "yocto-sdk: ${YOCTO_VERSION} (${host} host, qemuarm64 target)"
+} >> /etc/cxx-cmake-container/versions.txt
+EOF
+
+ENV YOCTO_SDK_ENV=/opt/poky/${YOCTO_VERSION}/environment-setup-cortexa57-poky-linux

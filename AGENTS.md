@@ -11,8 +11,10 @@ Instructions for coding agents working in this repository. People should read
 | Build `dev` | `docker build --target dev -t cxx-cmake-container:dev-local .` |
 | Smoke test `ci` | `docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:ci-local /test/smoke.sh` |
 | Smoke test `dev` | `docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) cxx-cmake-container:dev-local /test/smoke.sh` |
+| Build `yocto` | `docker build --target yocto -t cxx-cmake-container:yocto-local .` |
+| Smoke test `yocto` | `docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:yocto-local /test/smoke-yocto.sh` |
 
-A change is done when both stages build and the smoke test passes in each. CI
+A change is done when every stage builds and its smoke test passes. CI
 repeats this on amd64 and arm64; say in the pull request which architecture
 you checked locally.
 

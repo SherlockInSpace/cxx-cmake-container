@@ -36,9 +36,11 @@ steps on amd64 and arm64.
 ```sh
 docker build --target ci -t cxx-cmake-container:ci-local .
 docker build --target dev -t cxx-cmake-container:dev-local .
+docker build --target yocto -t cxx-cmake-container:yocto-local .
 docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:ci-local /test/smoke.sh
 docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
   cxx-cmake-container:dev-local /test/smoke.sh
+docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:yocto-local /test/smoke-yocto.sh
 ```
 
 ## Dockerfile
