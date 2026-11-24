@@ -1,6 +1,6 @@
-# The pull request gate. Builds the ci and dev stages on amd64 and arm64,
-# runs test/smoke.sh in both, and lints every commit. Nothing is pushed.
-# Images are published at release.
+# The pull request gate. Builds the ci, dev and yocto stages on amd64 and
+# arm64, runs each stage's smoke test, and lints every commit. Nothing is
+# pushed. Images are published at release.
 
 name: ci
 
@@ -78,6 +78,46 @@ jobs:
           docker run --rm -v "$PWD/test:/test:ro"
           -e HOST_UID=$(id -u) -e HOST_GID=$(id -g)
           cxx-cmake-container:dev /test/smoke.sh
+
+  # After build, so the ci layers come from its cache. The SDK is 1.7 GB
+  # unpacked and the cache holds 10 GB for the whole repository, so it is not
+  # cached: every run downloads the installer again.
+  yocto:
+    needs: build
+    name: yocto (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # Room for the SDK and the copy load hands to Docker. These preinstalled
+      # toolchains are unused here.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          df -h /
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build yocto
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: yocto
+          tags: cxx-cmake-container:yocto
+          load: true
+          push: false
+          cache-from: type=gha,scope=${{ matrix.arch }}
+
+      - name: Smoke test yocto
+        run: docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:yocto /test/smoke-yocto.sh
 
   commitlint:
     name: conventional commit messages
