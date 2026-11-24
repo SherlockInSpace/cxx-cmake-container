@@ -1,7 +1,7 @@
 # Every push to main updates the rolling release pull request with
 # CHANGELOG.md and the next version, computed from the commit subjects.
-# Merging it tags vX.Y.Z, creates the GitHub Release, and publishes the ci and
-# dev images to GHCR for linux/amd64 and linux/arm64.
+# Merging it tags vX.Y.Z, creates the GitHub Release, and publishes the ci,
+# dev and yocto images to GHCR for linux/amd64 and linux/arm64.
 # Needs the RELEASE_PLEASE_TOKEN secret, see README "Releases".
 #
 # workflow_dispatch(version) only repairs a publish that failed: it builds
@@ -113,7 +113,7 @@ jobs:
             exit 1
           fi
 
-  # Each architecture builds both stages natively and pushes them by digest,
+  # Each architecture builds every stage natively and pushes it by digest,
   # untagged. The merge job below puts the two digests of a stage under one
   # multi-arch index and tags that.
   build:
@@ -136,6 +136,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           ref: ${{ needs.target.outputs.tag }}
+
+      # Room for the yocto stage's SDK. These preinstalled toolchains are
+      # unused here.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          df -h /
 
       - uses: docker/setup-buildx-action@v4
 
@@ -196,13 +203,31 @@ jobs:
           provenance: true
           cache-from: type=gha,scope=${{ matrix.arch }}
 
+      - name: Build and push yocto by digest
+        id: yocto
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: yocto
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.IMAGE_PREFIX }}/yocto,push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            ${{ steps.labels.outputs.common }}
+            org.opencontainers.image.title=cxx-cmake-container yocto
+            org.opencontainers.image.description=cxx-cmake build environment (yocto stage): the ci stage plus the meta-cxx-cmake Yocto SDK, versions in /etc/cxx-cmake-container/versions.txt
+          sbom: true
+          provenance: true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+
       - name: Record the digests
         env:
           CI_DIGEST: ${{ steps.ci.outputs.digest }}
           DEV_DIGEST: ${{ steps.dev.outputs.digest }}
+          YOCTO_DIGEST: ${{ steps.yocto.outputs.digest }}
         run: |
-          mkdir -p digests/ci digests/dev
-          touch "digests/ci/${CI_DIGEST#sha256:}" "digests/dev/${DEV_DIGEST#sha256:}"
+          mkdir -p digests/ci digests/dev digests/yocto
+          touch "digests/ci/${CI_DIGEST#sha256:}" "digests/dev/${DEV_DIGEST#sha256:}" \
+            "digests/yocto/${YOCTO_DIGEST#sha256:}"
 
       - uses: actions/upload-artifact@v7
         with:
@@ -217,7 +242,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        stage: [ci, dev]
+        stage: [ci, dev, yocto]
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -347,6 +372,7 @@ jobs:
         run: |
           CI_DIGEST=$(cat index/ci)
           DEV_DIGEST=$(cat index/dev)
+          YOCTO_DIGEST=$(cat index/yocto)
           gh release view "$TAG" --json body -q .body > notes.md
           if ! grep -q '^## Images' notes.md; then
             {
@@ -357,6 +383,7 @@ jobs:
               echo "|---|---|"
               echo "| \`$IMAGE_PREFIX/ci:$VERSION\` | \`$CI_DIGEST\` |"
               echo "| \`$IMAGE_PREFIX/dev:$VERSION\` | \`$DEV_DIGEST\` |"
+              echo "| \`$IMAGE_PREFIX/yocto:$VERSION\` | \`$YOCTO_DIGEST\` |"
               echo
               echo "Use by digest: \`$IMAGE_PREFIX/dev:$VERSION@$DEV_DIGEST\`."
             } >> notes.md
