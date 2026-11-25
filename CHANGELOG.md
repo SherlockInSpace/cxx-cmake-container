@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.6...v0.1.7) (2026-11-25)
+
+
+### Features
+
+* **docker:** meta-cxx-cmake 0.2.0 SDK with Tracy ([aa7999d](https://github.com/SherlockInSpace/cxx-cmake-container/commit/aa7999ded64e5d75155bc7aa84a4e8b3e759b01d)), closes [#55](https://github.com/SherlockInSpace/cxx-cmake-container/issues/55)
+
 ## [0.1.6](https://github.com/SherlockInSpace/cxx-cmake-container/compare/v0.1.5...v0.1.6) (2026-11-24)
 
 
