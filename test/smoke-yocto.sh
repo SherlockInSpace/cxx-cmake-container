@@ -1,8 +1,8 @@
 #!/bin/sh
 # Checks the yocto stage: versions.txt names the SDK in expected-versions.env,
-# and in the SDK environment a probe that finds util, spdlog and GoogleTest in
-# the target sysroot cross-compiles to aarch64. Nothing it builds is run.
-# Writes only to a temp dir.
+# and in the SDK environment a probe that finds util, spdlog, GoogleTest and
+# Tracy in the target sysroot cross-compiles to aarch64. Nothing it builds is
+# run. Writes only to a temp dir.
 set -eu
 
 . "$(dirname "$0")/expected-versions.env"
@@ -58,16 +58,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(GTest CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(util CONFIG REQUIRED)
+find_package(Tracy CONFIG REQUIRED)
 add_executable(probe probe.cpp)
-target_link_libraries(probe PRIVATE GTest::gtest_main spdlog::spdlog util::util)
+target_link_libraries(probe PRIVATE
+    GTest::gtest_main spdlog::spdlog util::util Tracy::TracyClient)
 CMAKE
 
 cat > "$tmp/probe.cpp" <<'CPP'
 #include <gtest/gtest.h>
 #include <spdlog/spdlog.h>
+#include <tracy/Tracy.hpp>
 #include <util/bloom.hpp>
 
 TEST(Probe, Bloom) {
+    ZoneScoped;
     util::Bloom filter;
     filter.insert("probe");
     spdlog::info("probe inserted");
@@ -88,11 +92,13 @@ step() { # row description command...
 
 # No -DCMAKE_TOOLCHAIN_FILE: the SDK environment sets CMAKE_TOOLCHAIN_FILE.
 step PROBE "configure in the SDK environment" cmake -S "$tmp" -B "$tmp/build" -G Ninja
-util_dir="$(sed -n 's/^util_DIR:PATH=//p' "$tmp/build/CMakeCache.txt")"
-case "$util_dir" in
-    "$OECORE_TARGET_SYSROOT"/*) echo "ok   PROBE: util from $util_dir" ;;
-    *) fail "PROBE: util came from '$util_dir', not the target sysroot" ;;
-esac
+for package in util Tracy; do
+    dir="$(sed -n "s/^${package}_DIR:PATH=//p" "$tmp/build/CMakeCache.txt")"
+    case "$dir" in
+        "$OECORE_TARGET_SYSROOT"/*) echo "ok   PROBE: $package from $dir" ;;
+        *) fail "PROBE: $package came from '$dir', not the target sysroot" ;;
+    esac
+done
 step PROBE "cross-compile" cmake --build "$tmp/build"
 readelf -h "$tmp/build/probe" | grep -q 'Machine:.*AArch64' \
     || fail "PROBE: the binary is not aarch64"

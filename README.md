@@ -83,8 +83,8 @@ says nothing about how the Yocto toolchain behaves.
 | Google Benchmark | 1.9.5 | `libbenchmark-dev` 1.9.1-1build1 | patch release behind |
 | spdlog | 1.17.0 | upstream release 1.17.0 with its bundled fmt 12.1, built in the image | same |
 | util | meta-cxx-cmake's `util` recipe | cxx-cmake-library release 0.3.0, built in the image | |
-| Tracy | not in Wrynose | upstream release 0.15.0, built in the image | |
-| Yocto SDK (`yocto` only) | 6.0.2 | meta-cxx-cmake release 0.1.0 | same |
+| Tracy | meta-cxx-cmake's `tracy` recipe, 0.15.0 | upstream release 0.15.0, built in the image | same |
+| Yocto SDK (`yocto` only) | 6.0.2 | meta-cxx-cmake release 0.2.0 | same |
 
 Ubuntu 26.04 has CMake 4.2, so CMake comes from Kitware's tarball, checked
 against its published SHA-256. `clang`, `clang-tidy` and `clang-format` point
@@ -162,8 +162,9 @@ docker run --rm -v "$PWD/test:/test:ro" -e HOST_UID=$(id -u) -e HOST_GID=$(id -g
 ```
 
 `test/smoke-yocto.sh` checks `yocto`: the SDK version in `versions.txt`, the
-SDK's GCC and CMake, and a project that finds util, spdlog and GoogleTest in
-the target sysroot and cross-compiles to aarch64. It runs nothing it builds.
+SDK's GCC and CMake, and a project that finds util, spdlog, GoogleTest and
+Tracy in the target sysroot and cross-compiles to aarch64. It runs nothing it
+builds.
 
 ```sh
 docker run --rm -v "$PWD/test:/test:ro" cxx-cmake-container:yocto-local /test/smoke-yocto.sh
@@ -190,6 +191,10 @@ table above when a row changes.
   and SHA-256 from <https://pypi.org/project/ruff/#files>.
 - **util.** After a cxx-cmake-library release, change `UTIL_VERSION` and the
   SHA-256 of its tag's tarball, and `UTIL` in `expected-versions.env`.
+- **Tracy.** Change `TRACY_VERSION` and the SHA-256 of its tag's tarball
+  together with meta-cxx-cmake's `tracy` recipe and cxx-cmake-app's
+  `ENABLE_TRACY` version. `tracy-capture` only talks to a client of the same
+  release, including one on a board built from the layer.
 - **Wrynose point release.** Compare its versions with the table, move the
   snapshot forward until Ubuntu's packages match as closely as they can,
   update the table and commit it as `feat(docker)`.
